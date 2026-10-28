@@ -47,6 +47,7 @@ Status vocabulary: **IMPLEMENTED** = code exists and has the stated evidence; **
 | GA-03 | P0 | Reliable publishing state machine and recovery | OPEN — AUDIT FIRST | Incorrect “Published” states, duplicate posts or blind retries are release-blocking reliability defects. |
 | GA-04 | P0 | Provider/action/media capability preflight | OPEN — AUDIT FIRST | Provider icons and adapter code do not prove a given account can publish a given content type. |
 | GA-15 | P0 | SSRF-safe RSS/article fetch and redirect handling | IMPLEMENTED_UNVERIFIED | Both configured feed URLs and RSS item links trigger server-side outbound requests; redirect targets and response sizes must be controlled. |
+| GA-16 | P1 | Publishing workflow dispatch observability and reconciliation | IMPLEMENTED_UNVERIFIED | Silently failed Temporal workflow starts can leave scheduled posts waiting for the periodic recovery sweep without immediate diagnostic evidence. |
 | GA-05 | P0 | Tenant isolation, credential protection and audit trail | OPEN — AUDIT FIRST | Cross-client leakage or token exposure is unacceptable for agencies and business users. |
 | GA-06 | P1 | Arabic/French content workflow and optional Darija assistance | OPEN — QUALITY REVIEW | UI language, post language, writing style and timezone must stay independent. |
 | GA-07 | P1 | Mobile-first media resilience and draft recovery | OPEN — AUDIT FIRST | Upload interruption and weak connectivity must not lose content or cause duplicate publication. |
@@ -90,6 +91,21 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 - [ ] Add deterministic redirect and redirect-loop tests, including proving an unsafe redirect destination is never requested.
 
 **Current status:** `IMPLEMENTED_UNVERIFIED`. The safety tests are present in the branch, but are not marked passed until executed. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-sec-01).
+
+### GA-16 — Publishing workflow dispatch observability and reconciliation
+
+**Finding:** source inspection found empty catches around previous-workflow enumeration/termination and workflow startup. Scheduled post persistence can succeed even if Temporal dispatch does not.
+
+**Change applied in this branch:**
+- [x] Report workflow list/termination errors with safe Sentry context.
+- [x] Throw if the Temporal client is absent; do not silently treat optional-chain dispatch as a successful start.
+- [x] Propagate startup errors to each caller and report with operation, post ID, organization ID, task queue and workflow ID only.
+- [ ] Run backend typecheck/build on the pinned toolchain.
+- [ ] Add a test for missing Temporal client and failed workflow start.
+- [ ] Prove queued posts lacking a running workflow are detected and safely recovered; the existing sweep is hourly, so recovery delay must be measured.
+- [ ] Confirm Sentry telemetry delivery in a configured test environment.
+
+**Current status:** `IMPLEMENTED_UNVERIFIED`. Code has been committed, but no backend build, telemetry delivery test, or reconciliation test has been recorded. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02).
 
 ### GA-02 — Browser-level RTL and accessibility
 
