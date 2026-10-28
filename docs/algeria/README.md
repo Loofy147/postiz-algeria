@@ -1,15 +1,15 @@
 # Postiz Algeria — Product Documentation
 
-> **Status:** planning baseline, not an implementation claim  
+> **Status:** active working specification; production readiness remains unverified  
 > **Repository:** [Loofy147/postiz-algeria](https://github.com/Loofy147/postiz-algeria)  
 > **Upstream:** [gitroomhq/postiz-app](https://github.com/gitroomhq/postiz-app)  
-> **Review date:** 2026-10-27
+> **Review date:** 2026-10-28
 
-This directory defines the intended localized product, the implementation sequence, provider-capability evidence requirements, and production release gates. The application remains based on upstream Postiz until a code audit justifies specific changes.
+This directory defines the intended localized product, the implementation sequence, ranked add-on/gap specifications, provider-capability evidence requirements, and production release gates. Extend inherited Postiz mechanisms where possible; add a replacement subsystem only when an audit demonstrates a gap.
 
 ## Documents
 
-- [Product blueprint](PRODUCT_BLUEPRINT.md) — target users, differentiated capabilities, architecture constraints, decisions and success measures.
+- [Product blueprint](PRODUCT_BLUEPRINT.md) — target users, differentiated capabilities, architecture constraints, decisions and success measures.\n- [Add-ons and gap register](ADD_ONS_AND_GAP_REGISTER.md) — prioritized gaps, acceptance criteria, evidence requirements and audit-before-add rules.
 - [Baseline source audit](BASELINE_AUDIT.md) — repository provenance and verified current localization/RTL findings; separates source inspection from runtime verification.
 - [Implementation roadmap](ROADMAP.md) — phased work, exit criteria and progress checklist.
 - [Integration capability matrix](INTEGRATION_CAPABILITY_MATRIX.md) — per-provider verification record; an inherited connector is not automatically production-approved.
