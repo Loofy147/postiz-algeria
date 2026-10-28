@@ -1,5 +1,5 @@
 import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Post as PostBody } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import {
   APPROVED_SUBMIT_FOR_ORDER,
@@ -623,9 +623,46 @@ export class PostsRepository {
     const uuid = uuidv4();
     const group = keepGroup && body.group ? body.group : uuid;
 
+    // Treat client-supplied post IDs and group IDs as untrusted. Validate
+    // ownership inside the repository before any upsert or group cleanup.
+    const suppliedIds = body.value
+      .map((value) => value.id)
+      .filter((id): id is string => Boolean(id));
+    const ids = [...new Set(suppliedIds)];
+    if (ids.length !== suppliedIds.length) {
+      throw new BadRequestException('A post ID may only appear once per save');
+    }
+
+    if (ids.length) {
+      const ownedPosts = await this._post.model.post.findMany({
+        where: {
+          id: { in: ids },
+          organizationId: orgId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (ownedPosts.length !== ids.length) {
+        throw new NotFoundException('One or more posts were not found');
+      }
+    }
+
+    if (body.group) {
+      const ownedGroup = await this._post.model.post.findFirst({
+        where: {
+          group: body.group,
+          organizationId: orgId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!ownedGroup) {
+        throw new NotFoundException('Post group was not found');
+      }
+    }
+
     // an edited post stays in the batch it was created in, even when it is
     // saved on its own or with a group that was rotated since
-    const ids = body.value.map((value) => value.id).filter(Boolean);
     const existingBatchId =
       body.group || ids.length
         ? (
@@ -696,8 +733,12 @@ export class PostsRepository {
 
       posts.push(
         await this._post.model.post.upsert({
+          // Extended unique filter prevents a stale/foreign ID from updating
+          // a row outside this organization, even if an upstream check missed it.
           where: {
             id: value.id || uuidv4(),
+            organizationId: orgId,
+            deletedAt: null,
           },
           create: { ...updateData('create') },
           update: {
@@ -757,6 +798,7 @@ export class PostsRepository {
           await this._post.model.post.findFirst({
             where: {
               group: body.group,
+              organizationId: orgId,
               deletedAt: null,
               parentPostId: null,
             },
@@ -771,6 +813,7 @@ export class PostsRepository {
       await this._post.model.post.updateMany({
         where: {
           group: body.group,
+          organizationId: orgId,
           deletedAt: null,
         },
         data: {
@@ -786,6 +829,7 @@ export class PostsRepository {
       await this._post.model.post.updateMany({
         where: {
           group: body.group,
+          organizationId: orgId,
           deletedAt: null,
           id: {
             notIn: posts.map((p) => p.id),
