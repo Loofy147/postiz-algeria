@@ -3,7 +3,7 @@
 **Audit type:** source-level inspection of publicly readable repository files.  
 **Audited ref:** `main` at `a5affe62c74e39c1e7ac960d50d8418b807d532c` (observed during this audit).  
 **Date:** 2026-10-27  
-**Runtime/build tests:** NOT RUN. This report does not claim that the application builds or that RTL works end-to-end.
+**Runtime/build tests:** NOT RUN at the initial 2026-10-27 baseline. Follow-up checks and the production build result are recorded in the implementation follow-up below.
 
 ## Confirmed repository facts
 
