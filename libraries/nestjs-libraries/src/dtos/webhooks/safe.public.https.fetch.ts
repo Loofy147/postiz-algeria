@@ -7,8 +7,6 @@ export type SafePublicTextFetchOptions = {
   maxBytes?: number;
   /** Timeout per request/redirect hop, in milliseconds. */
   timeoutMs?: number;
-  /** Injectable transport for deterministic unit tests. */
-  fetchImpl?: typeof fetch;
 };
 
 /**
