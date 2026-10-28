@@ -19,6 +19,7 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Write a baseline report separating verified facts, inference and open questions.
 - [x] Create the prioritized [add-ons and gap register](ADD_ONS_AND_GAP_REGISTER.md), with source surfaces, owners/status vocabulary, acceptance criteria and no-duplication rules.
 - [x] Identify the CI/runtime mismatch: repository declares Node.js 22.23.4 while the previous build workflow used 22.12.0; workflow alignment and locale tests are included in this branch, but a successful Actions run is still required.
+- [x] Record a partial [publishing reliability/provider audit](PUBLISHING_AND_PROVIDER_AUDIT.md); add SSRF-safe RSS/article fetching with URL revalidation, pinned-DNS dispatch, redirect limits and response-size bounds. Regression execution and CI remain OPEN.
 
 **Exit gate:** reproducible baseline report exists; test/build status is known, not assumed; no product implementation starts by duplicating an existing subsystem.
 
@@ -30,6 +31,8 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Test publishing only in provider-approved environments/accounts; never treat a UI success as proof of a provider publish.
 - [ ] Record API quotas, approval/audit prerequisites, token expiry, analytics availability and known limitations.
 - [ ] Map scheduler/worker retry behavior and possible duplicate-publish cases.
+- [x] Inspect the Temporal publishing workflow's existing unknown-outcome and duplicate-prevention contracts; broad provider-by-provider fault-injection remains OPEN.
+- [ ] Close the workflow-start observability gap: start/list errors are currently swallowed and require structured reporting plus safe reconciliation tests.
 - [ ] Identify observability gaps: job status, logs, queue lag, reconciliation, alerting and operator actions.
 - [ ] Complete [Integration Capability Matrix](INTEGRATION_CAPABILITY_MATRIX.md) with evidence for each priority provider.
 
@@ -57,6 +60,7 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Add/extend per-channel validation and previews using verified provider capability data.
 - [ ] Make publish-state transitions explicit and auditable.
 - [ ] Validate idempotency and retry handling; make ambiguous outcomes visible rather than forcing a blind retry.
+- [ ] Verify queued posts are reconciled when Temporal workflow startup fails; define alerting and user-visible dispatch failure behavior.
 - [ ] Add clear actionable states for expired permissions, provider errors and manual-only channels.
 - [ ] Test file/media upload interruptions and recovery.
 - [ ] Verify approval flow for at least one multi-user workspace and one separated client workspace.
