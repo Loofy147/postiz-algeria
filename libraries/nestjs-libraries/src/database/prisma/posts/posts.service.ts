@@ -898,30 +898,66 @@ export class PostsService {
     const post = await this._postRepository.deletePost(orgId, group);
 
     if (post?.id) {
-      try {
-        const workflows = this._temporalService.client
-          .getRawClient()
-          ?.workflow.list({
+      // Deleting the database row/group is not proof that an in-flight provider
+      // request was cancelled. Report failures rather than silently telling the
+      // caller only that deletion completed.
+      let workflowCancellation: 'not_required' | 'requested' | 'unconfirmed' =
+        'not_required';
+      const client = this._temporalService.client.getRawClient();
+
+      if (!client) {
+        workflowCancellation = 'unconfirmed';
+        this.reportWorkflowDispatchFailure(
+          new Error('Temporal client is unavailable during post deletion'),
+          'list-running',
+          'main',
+          post.id,
+          orgId
+        );
+      } else {
+        try {
+          const workflows = client.workflow.list({
             query: `postId="${post.id}" AND ExecutionStatus="Running"`,
           });
 
-        for await (const executionInfo of workflows) {
-          try {
-            const workflow =
-              await this._temporalService.client.getWorkflowHandle(
+          for await (const executionInfo of workflows) {
+            try {
+              const workflow =
+                await this._temporalService.client.getWorkflowHandle(
+                  executionInfo.workflowId
+                );
+              if (
+                workflow &&
+                (await workflow.describe()).status.name !== 'TERMINATED'
+              ) {
+                await workflow.terminate();
+                workflowCancellation = 'requested';
+              }
+            } catch (err) {
+              workflowCancellation = 'unconfirmed';
+              this.reportWorkflowDispatchFailure(
+                err,
+                'terminate-running',
+                'main',
+                post.id,
+                orgId,
                 executionInfo.workflowId
               );
-            if (
-              workflow &&
-              (await workflow.describe()).status.name !== 'TERMINATED'
-            ) {
-              await workflow.terminate();
             }
-          } catch (err) {}
+          }
+        } catch (err) {
+          workflowCancellation = 'unconfirmed';
+          this.reportWorkflowDispatchFailure(
+            err,
+            'list-running',
+            'main',
+            post.id,
+            orgId
+          );
         }
-      } catch (err) {}
+      }
 
-      return { id: post.id };
+      return { id: post.id, workflowCancellation };
     }
 
     return { error: true };
