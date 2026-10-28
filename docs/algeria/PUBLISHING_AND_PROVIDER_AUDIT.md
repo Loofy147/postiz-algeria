@@ -14,12 +14,12 @@ For reproducibility, relevant reviewed source blob SHAs are: `AutopostService` a
 
 ### PUB-SEC-01 — Server-side RSS/article fetch needed redirect-safe SSRF controls
 
-**Status:** Mitigation implemented in this branch; automated execution and CI confirmation remain OPEN.  
+**Status:** SSRF mitigation implemented; repository safety tests pass locally on Node 22.22.1, but the repository pins 22.23.4 and GitHub Actions has no run for the current PR head.  
 **Priority:** P0 security gate.
 
 Before the change, `AutopostService.loadXML()` delegated fetching to `rss-parser.parseURL(url)`, while `loadUrl()` used plain `fetch(url)` on a link originating in RSS content. The configured feed URL is validated by `AutopostDto`, but an RSS item link is separate external input. Validation of the initial URL alone does not make redirect destinations safe.
 
-The new `fetchSafePublicHttpsText()` helper:
+The new `fetchSafePublicHttpsText()` wrapper and dependency-injected `safe.public.https.fetch.core.mjs` helper:
 - validates every URL hop as public HTTPS;
 - follows redirects manually and limits redirect count;
 - uses the existing pinned-DNS SSRF-safe Undici dispatcher at connection time;
@@ -28,14 +28,16 @@ The new `fetchSafePublicHttpsText()` helper:
 
 Both RSS feed retrieval and article-link retrieval now use this helper. Empty feeds or feeds without a usable item link are reported as unsuccessful rather than treated as a valid latest item.
 
-**Change/evidence paths:** [safe public HTTPS fetch helper](../../libraries/nestjs-libraries/src/dtos/webhooks/safe.public.https.fetch.ts), [URL safety regression tests](../../scripts/test-safe-public-fetch.mjs), [autopost service](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [autopost DTO validation](../../libraries/nestjs-libraries/src/dtos/autopost/autopost.dto.ts), [existing SSRF dispatcher](../../libraries/nestjs-libraries/src/dtos/webhooks/ssrf.safe.dispatcher.ts).
+**Change/evidence paths:** [SSRF-safe fetch wrapper](../../libraries/nestjs-libraries/src/dtos/webhooks/safe.public.https.fetch.ts), [testable fetch core](../../libraries/nestjs-libraries/src/dtos/webhooks/safe.public.https.fetch.core.mjs), [core type contract](../../libraries/nestjs-libraries/src/dtos/webhooks/safe.public.https.fetch.core.d.mts), [URL safety regression tests](../../scripts/test-safe-public-fetch.mjs), [autopost service](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [autopost DTO validation](../../libraries/nestjs-libraries/src/dtos/autopost/autopost.dto.ts), [existing SSRF dispatcher](../../libraries/nestjs-libraries/src/dtos/webhooks/ssrf.safe.dispatcher.ts).
 
 **Remaining acceptance gates:**
 - [x] Apply safe fetch to both configured RSS feeds and RSS item links.
 - [x] Add regression checks proving unsafe URLs are rejected before the injected transport is called.
 - [ ] Execute `pnpm run test:url-safety` under the repository's pinned Node/pnpm toolchain.
 - [ ] Confirm the full CI build passes.
-- [ ] Add a deterministic test proving redirects to private IPs, non-HTTPS schemes, and redirect loops are rejected without issuing the second request.
+- [x] Add deterministic tests for private/non-HTTPS redirect destinations, redirect loops, and streamed response-size limits.
+
+**Local test evidence (2026-10-28):** On the repository checkout at commit `fa466b9459fb5c2bc169632133d6345b75e143dd`, `corepack pnpm run test:url-safety` passed 6/6 and `corepack pnpm run test:localization` passed 4/4 using Node `v22.22.1` / pnpm `10.6.1`. The run emitted the repository engine mismatch warning because Node `22.23.4` is pinned. These are local tests, not GitHub Actions, the full workspace build, or provider-side verification.
 
 ### PUB-REL-01 — Temporal publish workflow has meaningful duplicate-prevention behavior
 
