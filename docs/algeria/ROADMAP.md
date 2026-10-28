@@ -133,3 +133,14 @@ For each issue or change, record:
 - [ ] Provider/API audit — open.
 - [ ] Product localization implementation — open.
 - [ ] Production launch — open.
+
+## Evidence-backed implementation progress (2026-10-28)
+
+- [x] Shared locale utilities resolve supported locale codes and derive text direction from the primary language subtag.
+- [x] The authenticated app root now renders validated `lang` and `dir` attributes server-side from the language cookie.
+- [x] Client-side language changes synchronize both document attributes and clean up the language-change subscription.
+- [x] The Arabic language-picker flag maps to Algeria (`DZ`) in this fork.
+- [x] Focused locale tests pass: regional locale normalization, invalid/blank fallback, RTL/LTR direction and translation-key parity (4/4).
+- [x] Frontend TypeScript check passed: `corepack pnpm exec tsc --noEmit --pretty false -p apps/frontend/tsconfig.json` (exit code 0).
+- [ ] Production frontend build — pending final exit status.
+- [ ] Browser-level RTL and mobile visual checks remain OPEN.
