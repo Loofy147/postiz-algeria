@@ -934,18 +934,44 @@ export class PostsService {
     return this._postRepository.getPostByForWebhookId(id, integrationId);
   }
 
+  private reportWorkflowDispatchFailure(
+    err: unknown,
+    operation: 'list-running' | 'terminate-running' | 'start',
+    taskQueue: string,
+    postId: string,
+    orgId: string,
+    workflowId = `post_${postId}`
+  ) {
+    // Keep operational context useful without attaching post text or tokens.
+    Sentry.captureException(err, {
+      tags: {
+        component: 'posting-workflow-dispatch',
+        operation,
+      },
+      extra: {
+        taskQueue,
+        postId,
+        organizationId: orgId,
+        workflowId,
+      },
+    });
+  }
+
   async startWorkflow(
     taskQueue: string,
     postId: string,
     orgId: string,
     state: State
   ) {
+    const client = this._temporalService.client.getRawClient();
+    if (!client) {
+      throw new Error('Temporal client is unavailable; post workflow was not started');
+    }
+
     try {
-      const workflows = this._temporalService.client
-        .getRawClient()
-        ?.workflow.list({
-          query: `postId="${postId}" AND ExecutionStatus="Running"`,
-        });
+      const workflows = client.workflow.list({
+        query: `postId="${postId}" AND ExecutionStatus="Running"`,
+      });
 
       for await (const executionInfo of workflows) {
         try {
@@ -958,40 +984,58 @@ export class PostsService {
           ) {
             await workflow.terminate();
           }
-        } catch (err) {}
+        } catch (err) {
+          this.reportWorkflowDispatchFailure(
+            err,
+            'terminate-running',
+            taskQueue,
+            postId,
+            orgId,
+            executionInfo.workflowId
+          );
+        }
       }
-    } catch (err) {}
+    } catch (err) {
+      // A failure to inspect previous executions must be visible. We still try
+      // to start the deterministic workflow ID, which is the final conflict
+      // guard, instead of suppressing the original problem.
+      this.reportWorkflowDispatchFailure(
+        err,
+        'list-running',
+        taskQueue,
+        postId,
+        orgId
+      );
+    }
 
     if (state === 'DRAFT') {
       return;
     }
 
-    try {
-      await this._temporalService.client
-        .getRawClient()
-        ?.workflow.start('postWorkflowV112', {
-          workflowId: `post_${postId}`,
-          taskQueue: 'main',
-          workflowIdConflictPolicy: 'TERMINATE_EXISTING',
-          args: [
-            {
-              taskQueue: taskQueue,
-              postId: postId,
-              organizationId: orgId,
-            },
-          ],
-          typedSearchAttributes: new TypedSearchAttributes([
-            {
-              key: postIdSearchParam,
-              value: postId,
-            },
-            {
-              key: organizationId,
-              value: orgId,
-            },
-          ]),
-        });
-    } catch (err) {}
+    // Let dispatch failures reach each caller so it can report them without
+    // turning a persisted post into an unobserved queue entry.
+    await client.workflow.start('postWorkflowV112', {
+      workflowId: `post_${postId}`,
+      taskQueue: 'main',
+      workflowIdConflictPolicy: 'TERMINATE_EXISTING',
+      args: [
+        {
+          taskQueue: taskQueue,
+          postId: postId,
+          organizationId: orgId,
+        },
+      ],
+      typedSearchAttributes: new TypedSearchAttributes([
+        {
+          key: postIdSearchParam,
+          value: postId,
+        },
+        {
+          key: organizationId,
+          value: orgId,
+        },
+      ]),
+    });
   }
 
   /**
@@ -1208,12 +1252,17 @@ export class PostsService {
       );
 
       if (body.type !== 'update') {
-        this.startWorkflow(
-          post.settings.__type.split('-')[0].toLowerCase(),
-          posts[0].id,
-          orgId,
-          posts[0].state
-        ).catch((err) => {});
+        const taskQueue = post.settings.__type.split('-')[0].toLowerCase();
+        this.startWorkflow(taskQueue, posts[0].id, orgId, posts[0].state).catch(
+          (err) =>
+            this.reportWorkflowDispatchFailure(
+              err,
+              'start',
+              taskQueue,
+              posts[0].id,
+              orgId
+            )
+        );
       }
 
       Sentry.metrics.count('post_created', 1);
@@ -1394,14 +1443,20 @@ export class PostsService {
     const state: State = status === 'draft' ? 'DRAFT' : 'QUEUE';
     await this._postRepository.changeState(id, state);
 
+    const taskQueue = getPostById.integration.providerIdentifier
+      .split('-')[0]
+      .toLowerCase();
     try {
-      await this.startWorkflow(
-        getPostById.integration.providerIdentifier.split('-')[0].toLowerCase(),
+      await this.startWorkflow(taskQueue, getPostById.id, orgId, state);
+    } catch (err) {
+      this.reportWorkflowDispatchFailure(
+        err,
+        'start',
+        taskQueue,
         getPostById.id,
-        orgId,
-        state
+        orgId
       );
-    } catch (err) {}
+    }
 
     return { id, state };
   }
@@ -1430,16 +1485,25 @@ export class PostsService {
     );
 
     if (action === 'schedule') {
+      const taskQueue = getPostById.integration.providerIdentifier
+        .split('-')[0]
+        .toLowerCase();
       try {
         await this.startWorkflow(
-          getPostById.integration.providerIdentifier
-            .split('-')[0]
-            .toLowerCase(),
+          taskQueue,
           getPostById.id,
           orgId,
           getPostById.state === 'DRAFT' ? 'DRAFT' : 'QUEUE'
         );
-      } catch (err) {}
+      } catch (err) {
+        this.reportWorkflowDispatchFailure(
+          err,
+          'start',
+          taskQueue,
+          getPostById.id,
+          orgId
+        );
+      }
     }
 
     return newDate;
