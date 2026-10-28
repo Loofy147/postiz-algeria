@@ -88,9 +88,10 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 - [x] Add a Node test suite asserting unsafe schemes/private literal IPs/localhost/URL credentials are rejected before the injected fetch transport is called.
 - [ ] Run the regression suite under pinned Node.js `22.23.4` and pnpm `10.6.1`.
 - [ ] Confirm GitHub Actions reports a passing run and the full workspace build succeeds.
-- [ ] Add deterministic redirect and redirect-loop tests, including proving an unsafe redirect destination is never requested.
+- [x] Add deterministic redirect and redirect-loop tests, including proving an unsafe redirect destination is never requested.
+- [x] Run `corepack pnpm run test:url-safety` — 6/6 PASS on Node 22.22.1 / pnpm 10.6.1; exact pinned Node 22.23.4 and GitHub Actions remain unverified.
 
-**Current status:** `IMPLEMENTED_UNVERIFIED`. The safety tests are present in the branch, but are not marked passed until executed. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-sec-01).
+**Current status:** `IMPLEMENTED_UNVERIFIED`. The safety suite is locally verified 6/6 on Node 22.22.1. The repository pins Node 22.23.4; repeat under that exact version and obtain a successful GitHub Actions run before closing the release gate. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-sec-01).
 
 ### GA-16 — Publishing workflow dispatch observability and reconciliation
 
