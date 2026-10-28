@@ -169,11 +169,12 @@ Example external dependency: TikTok states that direct posting requires approved
 - [x] Add organization scope to old-group lookup and both soft-delete cleanup queries.
 - [x] Add six deterministic unit tests and a dedicated CI test step.
 - [x] Backend TypeScript check: PASS with zero diagnostics using a 3 GiB Node heap on local Node 22.22.1 / pnpm 10.6.1; the repository pins Node 22.23.4.
-- [ ] Complete the backend production build and confirm no project-wide regressions.
+- [x] Backend production build PASS (exit 0) on local checkout commit `84aee2296bfae7a8f543313a6b0374fdee2fc344` with Node 22.22.1 / pnpm 10.6.1.
+- [ ] Repeat the backend production build under pinned Node 22.23.4 and obtain CI confirmation.
 - [ ] Add two-organization database/API tests, including malicious ID/group attempts.
 - [ ] Audit all other tenant-owned routes and background jobs; this finding is not evidence of a full tenant audit.
 
-**Local evidence (2026-10-28, commit `84aee2296bfae7a8f543313a6b0374fdee2fc344`):** tenant-safety tests 6/6 PASS; URL-safety tests 6/6 PASS; localization tests 4/4 PASS; backend TypeScript check PASS; `git diff --check` PASS. Node version is 22.22.1, not pinned 22.23.4. **Status:** `IMPLEMENTED_UNVERIFIED`; backend build, database/API integration tests, full CI, and wider tenant audit remain open. See [PUB-SEC-02](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-sec-02).
+**Local evidence (2026-10-28, commit `84aee2296bfae7a8f543313a6b0374fdee2fc344`):** tenant-safety tests 6/6 PASS; URL-safety tests 6/6 PASS; localization tests 4/4 PASS; backend TypeScript check PASS; `git diff --check` PASS. Node version is 22.22.1, not pinned 22.23.4. **Status:** `IMPLEMENTED_UNVERIFIED`; full workspace build, repeat under pinned Node 22.23.4, database/API integration tests, full CI, and wider tenant audit remain open. See [PUB-SEC-02](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-sec-02).
 
 ### GA-05 — Tenant isolation and credentials
 
