@@ -98,8 +98,9 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 **Finding:** source inspection found empty catches around previous-workflow enumeration/termination and workflow startup. Scheduled post persistence can succeed even if Temporal dispatch does not.
 
 **Change applied in this branch:**
-- [x] Report workflow list/termination errors with safe Sentry context.
+- [x] Report workflow list/termination errors through Sentry and a structured NestJS log record with safe context.
 - [x] Throw if the Temporal client is absent; do not silently treat optional-chain dispatch as a successful start.
+- [x] Fail closed when running executions cannot be listed or terminated; do not start with `TERMINATE_EXISTING` when the existing publish state is unknown.
 - [x] Propagate startup errors to each caller and report with operation, post ID, organization ID, task queue and workflow ID only.
 - [ ] Run backend typecheck/build on the pinned toolchain.
 - [ ] Add a test for missing Temporal client and failed workflow start.
