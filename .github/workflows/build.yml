@@ -53,5 +53,8 @@ jobs:
       - name: Run localization regression tests
         run: pnpm run test:localization
 
+      - name: Run SSRF safety regression tests
+        run: pnpm run test:url-safety
+
       - name: Build
         run: pnpm run build
