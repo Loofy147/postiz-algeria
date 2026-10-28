@@ -16,6 +16,12 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import utc from 'dayjs/plugin/utc';
 import { v4 as uuidv4 } from 'uuid';
 import { CreateTagDto } from '@gitroom/nestjs-libraries/dtos/posts/create.tag.dto';
+import {
+  ownedPostGroupWhere,
+  ownedPostIdWhere,
+  ownedPostIdsWhere,
+  validatePostOwnership,
+} from './post.ownership.filters';
 
 dayjs.extend(isoWeek);
 dayjs.extend(weekOfYear);
@@ -625,41 +631,40 @@ export class PostsRepository {
 
     // Treat client-supplied post IDs and group IDs as untrusted. Validate
     // ownership inside the repository before any upsert or group cleanup.
-    const suppliedIds = body.value
-      .map((value) => value.id)
-      .filter((id): id is string => Boolean(id));
-    const ids = [...new Set(suppliedIds)];
-    if (ids.length !== suppliedIds.length) {
-      throw new BadRequestException('A post ID may only appear once per save');
+    const ownership = await validatePostOwnership(
+      orgId,
+      body.value.map((value) => value.id),
+      body.group,
+      {
+        findOwnedPostIds: async (organizationId, ids) =>
+          (
+            await this._post.model.post.findMany({
+              where: ownedPostIdsWhere(organizationId, ids),
+              select: { id: true },
+            })
+          ).map((post) => post.id),
+        findOwnedGroup: async (organizationId, group) =>
+          Boolean(
+            await this._post.model.post.findFirst({
+              where: ownedPostGroupWhere(organizationId, group),
+              select: { id: true },
+            })
+          ),
+      }
+    );
+
+    if (!ownership.ok) {
+      if (ownership.reason === 'DUPLICATE_POST_ID') {
+        throw new BadRequestException('A post ID may only appear once per save');
+      }
+      throw new NotFoundException(
+        ownership.reason === 'GROUP_NOT_FOUND'
+          ? 'Post group was not found'
+          : 'One or more posts were not found'
+      );
     }
 
-    if (ids.length) {
-      const ownedPosts = await this._post.model.post.findMany({
-        where: {
-          id: { in: ids },
-          organizationId: orgId,
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      if (ownedPosts.length !== ids.length) {
-        throw new NotFoundException('One or more posts were not found');
-      }
-    }
-
-    if (body.group) {
-      const ownedGroup = await this._post.model.post.findFirst({
-        where: {
-          group: body.group,
-          organizationId: orgId,
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      if (!ownedGroup) {
-        throw new NotFoundException('Post group was not found');
-      }
-    }
+    const ids = ownership.ids;
 
     // an edited post stays in the batch it was created in, even when it is
     // saved on its own or with a group that was rotated since
@@ -736,9 +741,7 @@ export class PostsRepository {
           // Extended unique filter prevents a stale/foreign ID from updating
           // a row outside this organization, even if an upstream check missed it.
           where: {
-            id: value.id || uuidv4(),
-            organizationId: orgId,
-            deletedAt: null,
+            ...ownedPostIdWhere(orgId, value.id || uuidv4()),
           },
           create: { ...updateData('create') },
           update: {
@@ -797,9 +800,7 @@ export class PostsRepository {
       ? (
           await this._post.model.post.findFirst({
             where: {
-              group: body.group,
-              organizationId: orgId,
-              deletedAt: null,
+              ...ownedPostGroupWhere(orgId, body.group),
               parentPostId: null,
             },
             select: {
@@ -812,9 +813,7 @@ export class PostsRepository {
     if (body.group && !keepGroup) {
       await this._post.model.post.updateMany({
         where: {
-          group: body.group,
-          organizationId: orgId,
-          deletedAt: null,
+          ...ownedPostGroupWhere(orgId, body.group),
         },
         data: {
           parentPostId: null,
@@ -828,9 +827,7 @@ export class PostsRepository {
     if (body.group && keepGroup) {
       await this._post.model.post.updateMany({
         where: {
-          group: body.group,
-          organizationId: orgId,
-          deletedAt: null,
+          ...ownedPostGroupWhere(orgId, body.group),
           id: {
             notIn: posts.map((p) => p.id),
           },
