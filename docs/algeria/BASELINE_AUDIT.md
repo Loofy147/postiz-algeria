@@ -71,3 +71,17 @@ The feature branch adds a shared locale utility at `libraries/react-shared-libra
 ### Timezone decision
 
 The existing implementation detects the browser timezone and supports a per-user override stored in the user record; it also retains the prior selection for routes outside the signed-in layout. The Algeria localization work therefore must not force `Africa/Algiers` onto every user. Any Algeria-focused suggestion should be an explicit, editable default and must preserve user overrides. Source inspected: `apps/frontend/src/components/layout/set.timezone.tsx`, `apps/frontend/src/components/new-layout/layout.component.tsx`, `apps/frontend/src/components/settings/metric.component.tsx`, and the `User.timezoneName` field in the Prisma schema.
+
+
+### Server-rendered locale smoke test — 2026-10-28
+
+Using the built Next.js application served locally, an HTTP request to `/auth/login` was made with each `i18next` cookie below. All four checks passed against the initial HTML response:
+
+| Cookie | Expected HTML | Result |
+|---|---|---|
+| `i18next=ar` | `<html lang="ar" dir="rtl">` | PASS |
+| `i18next=ar-DZ` | `<html lang="ar" dir="rtl">` | PASS |
+| `i18next=fr` | `<html lang="fr" dir="ltr">` | PASS |
+| `i18next=xx-YY` | `<html lang="en" dir="ltr">` | PASS |
+
+This verifies server-rendered locale resolution and initial document attributes for the tested route. It does **not** establish that every component is visually RTL-correct, that language switching is correct in a real browser, or that mobile accessibility is complete.
