@@ -67,7 +67,8 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 - [x] If running executions cannot be listed or an existing execution cannot be terminated, dispatch fails closed rather than starting with `TERMINATE_EXISTING` and potentially interrupting an active publish.
 - [x] Workflow-start errors propagate to each caller; callers report them through the same non-content, non-credential context.
 - [x] Error telemetry avoids post text, access tokens, and refresh tokens.
-- [ ] Run backend typecheck/build and verify the Sentry options compile under the pinned toolchain.
+- [x] Backend TypeScript check passes on local checkout commit `84aee2296bfae7a8f543313a6b0374fdee2fc344` with `NODE_OPTIONS=--max-old-space-size=3072` (zero diagnostics, exit 0); Node is 22.22.1 rather than pinned 22.23.4.
+- [ ] Complete the backend production build under the pinned toolchain.
 - [ ] Add a reconciliation test proving queued posts with no live workflow are detected and safely restarted.
 - [ ] Measure dispatch failures and queued-post age; confirm Sentry telemetry arrives in an enabled test environment.
 - [ ] Define the user-visible behavior when dispatch is unavailable; do not claim an actively running workflow unless durable handoff or reconciliation is evidenced.
@@ -114,7 +115,7 @@ Do not add a second capability subsystem until the existing adapter/settings mod
 - [ ] Audit other resource routes and direct repository mutation methods; this fix does not establish full application-wide tenant isolation.
 - [ ] Confirm a successful GitHub Actions run. No Actions run is recorded for the current PR at the time of this review.
 
-**Local evidence (2026-10-28):** `corepack pnpm run test:tenant-safety` passed 6/6, `corepack pnpm run test:url-safety` passed 6/6, `corepack pnpm run test:localization` passed 4/4, and `git diff --check` passed at checkout commit `c8f9ac333b0ab0c234bd309d4d5dea871b403cd4`. These are local Node `v22.22.1` / pnpm `10.6.1` results; the repository pins Node `22.23.4`. The ownership tests exercise the reusable guard contract and filter builders; they are not a substitute for database-backed API tests.
+**Local evidence (2026-10-28):** On synced checkout commit `84aee2296bfae7a8f543313a6b0374fdee2fc344`, `corepack pnpm run test:tenant-safety` passed 6/6, `corepack pnpm run test:url-safety` passed 6/6, `corepack pnpm run test:localization` passed 4/4, `git diff --check` passed, and the backend TypeScript check passed with zero diagnostics using a 3 GiB heap. These are local Node `v22.22.1` / pnpm `10.6.1` results; the repository pins Node `22.23.4`. The ownership tests exercise the reusable guard contract and filter builders; they are not a substitute for database-backed API tests.
 
 **Source paths:** [PostsRepository](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts), [ownership guard/filter contract](../../libraries/nestjs-libraries/src/database/prisma/posts/post.ownership.filters.ts), [ownership tests](../../scripts/test-post-ownership-safety.mjs), [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [posts controller](../../apps/backend/src/api/routes/posts.controller.ts).
 
