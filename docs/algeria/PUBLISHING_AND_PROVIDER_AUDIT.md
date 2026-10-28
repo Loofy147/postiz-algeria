@@ -96,6 +96,28 @@ Do not add a second capability subsystem until the existing adapter/settings mod
 
 **Source paths:** [integration manager](../../libraries/nestjs-libraries/src/integrations/integration.manager.ts), [provider contract](../../libraries/nestjs-libraries/src/integrations/social/social.integrations.interface.ts), [server-side post validation](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts).
 
+### PUB-SEC-02 — Post/group writes lacked consistent organization ownership checks
+
+**Status:** Source mitigation implemented; regression suite passes locally. Full repository typecheck/build and a database-backed cross-tenant integration test remain release gates.  
+**Priority:** P0 security/data-integrity gate.
+
+**Source finding:** `PostsService.mapTypeToPost()` validates that each selected integration belongs to the current organization, but does not validate client-supplied post IDs or group IDs. `createPost()` calls `guardAgainstRepublish()` with an organization-scoped lookup, but a missing result is treated like a non-published post and is not rejected there. `PostsRepository.createOrUpdatePost()` previously upserted by post ID alone; its update payload could therefore target an existing record from another organization. The repository also had group-based cleanup queries that did not include `organizationId`.
+
+**Change applied in this branch:**
+- [x] Add `validatePostOwnership()` to reject duplicate client-supplied IDs, IDs not returned by the current organization-scoped lookup, and groups not found within the current organization.
+- [x] Reuse tested `ownedPostIdsWhere()`, `ownedPostIdWhere()`, and `ownedPostGroupWhere()` builders for the repository lookup filters.
+- [x] Scope the upsert's extended unique filter to `id + organizationId + deletedAt:null`.
+- [x] Scope previous-root lookup and both group-cleanup/sweep updates to the current organization.
+- [x] Add a six-test tenant ownership suite and a root script `pnpm run test:tenant-safety`; wire it into the build workflow.
+- [ ] Run backend TypeScript checks and the full workspace build after the latest repository changes.
+- [ ] Add database-backed API/integration tests using two real test organizations to prove foreign post/group IDs cannot update, delete, publish, or reassign records.
+- [ ] Audit other resource routes and direct repository mutation methods; this fix does not establish full application-wide tenant isolation.
+- [ ] Confirm a successful GitHub Actions run. No Actions run is recorded for the current PR at the time of this review.
+
+**Local evidence (2026-10-28):** `corepack pnpm run test:tenant-safety` passed 6/6, `corepack pnpm run test:url-safety` passed 6/6, `corepack pnpm run test:localization` passed 4/4, and `git diff --check` passed at checkout commit `c8f9ac333b0ab0c234bd309d4d5dea871b403cd4`. These are local Node `v22.22.1` / pnpm `10.6.1` results; the repository pins Node `22.23.4`. The ownership tests exercise the reusable guard contract and filter builders; they are not a substitute for database-backed API tests.
+
+**Source paths:** [PostsRepository](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts), [ownership guard/filter contract](../../libraries/nestjs-libraries/src/database/prisma/posts/post.ownership.filters.ts), [ownership tests](../../scripts/test-post-ownership-safety.mjs), [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [posts controller](../../apps/backend/src/api/routes/posts.controller.ts).
+
 ### PUB-AUTH-01 — Autopost entitlement behavior is inconsistent across mutations
 
 **Status:** OPEN; intended subscription semantics require confirmation against the product contract.  
