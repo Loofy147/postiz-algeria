@@ -8,7 +8,7 @@
 
 This pass inspected the feed-based autopost path, the Temporal publishing workflow, provider contracts, post persistence paths, and the subscription policy guard. It did not use live social accounts or execute real provider publishes. Provider approval, account-type permissions, and real-world outcomes remain **OPEN**. Source inspection proves that code exists, not that an external platform accepts an operation.
 
-For reproducibility, relevant reviewed source blob SHAs are: `AutopostService` after hardening `4d366943096084c164cbf4592c0aef938937809d`; SSRF-safe text fetch `7adc28c0a0499d9baa61e47d4a08ea3229ea2326`; post workflow v1.1.2 `f2976a2645c1d66ae0f9b512244d7e93edf20877`; `PostsService` `6756ae653cc52dca7e03d5b997c7549e1b2782b5`; `PostsRepository` `c2830afdd0c3cdbd3ce78377b7066562fc58de06`; provider interface `261b84e25e623b8ca63c50b4cf0f2569d8a62b7b`.
+For reproducibility, relevant reviewed source blob SHAs are: `AutopostService` after hardening `4d366943096084c164cbf4592c0aef938937809d`; SSRF-safe text fetch `7adc28c0a0499d9baa61e47d4a08ea3229ea2326`; post workflow v1.1.2 `f2976a2645c1d66ae0f9b512244d7e93edf20877`; `PostsService` after dispatch-reporting change `4346b93b3eda089d861c99691515dc140f83a5f7`; `PostsRepository` `c2830afdd0c3cdbd3ce78377b7066562fc58de06`; provider interface `261b84e25e623b8ca63c50b4cf0f2569d8a62b7b`.
 
 ## Findings
 
@@ -52,20 +52,26 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 - [ ] Record residual duplication risk for providers that cannot reconcile a timed-out create operation.
 - [ ] Prove cancellation/rescheduling cannot leave two active workflows for one post.
 
-### PUB-REL-02 — Workflow startup failures are swallowed instead of being operationally visible
+### PUB-REL-02 — Workflow startup failures need observable dispatch and recovery
 
-**Status:** OPEN.  
+**Status:** Dispatch-error reporting implemented in source; operational telemetry and reconciliation tests remain OPEN.  
 **Priority:** P1 reliability/operations.
 
-`PostsService.startWorkflow()` catches failures while listing/terminating prior workflows and while starting `postWorkflowV112`. These paths currently suppress the error. The caller in `createPost()` also attaches an empty catch. A database post can therefore be persisted as queued while workflow startup has failed, without an immediate actionable signal. The existing missing-post workflow may later recover some cases, but delayed recovery is not a substitute for observability.
+**Source finding:** `PostsService.startWorkflow()` previously swallowed failures while listing/terminating prior workflows and starting `postWorkflowV112`; its callers also had empty catches. A database post could remain queued without an immediate signal that workflow dispatch failed.
 
-**Required next work:**
-- Add structured failure reporting (workflow ID, post ID, organization ID, operation, and safe error classification; never include credentials or post content).
-- Measure failed workflow starts and queued-post age.
-- Add a reconciliation test proving queued posts with no live workflow are detected and safely restarted.
-- Define the user-visible behavior when dispatch is unavailable; do not claim a post is actively scheduled unless durable workflow handoff or reconciliation is evidenced.
+**Change applied in this branch:**
+- [x] A missing Temporal client now raises an explicit error rather than returning apparent success through optional chaining.
+- [x] Failures while listing or terminating previous executions are reported through Sentry with operation, post ID, organization ID, task queue, and workflow ID context.
+- [x] Workflow-start errors propagate to each caller; callers report them through the same non-content, non-credential context.
+- [x] Error telemetry avoids post text, access tokens, and refresh tokens.
+- [ ] Run backend typecheck/build and verify the Sentry options compile under the pinned toolchain.
+- [ ] Add a reconciliation test proving queued posts with no live workflow are detected and safely restarted.
+- [ ] Measure dispatch failures and queued-post age; confirm Sentry telemetry arrives in an enabled test environment.
+- [ ] Define the user-visible behavior when dispatch is unavailable; do not claim an actively running workflow unless durable handoff or reconciliation is evidenced.
 
-**Source paths:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [missing-post workflow](../../apps/orchestrator/src/workflows/missing.post.workflow.ts).
+The existing missing-post sweep runs on an hourly cadence and is a recovery path; it is not immediate dispatch confirmation.
+
+**Source paths:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [missing-post workflow](../../apps/orchestrator/src/workflows/missing.post.workflow.ts), [post activity recovery](../../apps/orchestrator/src/activities/post.activity.ts).
 
 ### PUB-CAP-01 — Provider support cannot yet be represented as one verified product promise
 
