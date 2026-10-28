@@ -653,7 +653,7 @@ export class PostsRepository {
       }
     );
 
-    if (!ownership.ok) {
+    if (ownership.ok === false) {
       if (ownership.reason === 'DUPLICATE_POST_ID') {
         throw new BadRequestException('A post ID may only appear once per save');
       }
