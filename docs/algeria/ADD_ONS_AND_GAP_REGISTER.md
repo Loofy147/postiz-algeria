@@ -5,6 +5,8 @@
 **Working branch:** `feature/algeria-product-foundation`  
 **Rule:** Audit inherited behavior before creating a replacement subsystem. Presence of a route, UI component or dependency is not proof of a working end-to-end feature.
 
+**Latest audit:** [Publishing reliability and provider capability audit](PUBLISHING_AND_PROVIDER_AUDIT.md). RSS/article SSRF hardening is implemented in source, but regression execution and CI remain OPEN.
+
 ## 1. Executive decision
 
 The fork should become an Algeria-first, mobile-usable social publishing workspace by extending the inherited Postiz platform. Do not attempt a wholesale rewrite or add competing scheduler, analytics, team, billing or AI frameworks without evidence that the current mechanism fails its acceptance criteria.
@@ -13,7 +15,7 @@ The first delivery sequence is:
 
 1. Align CI with the repository's declared runtime and execute the localization regression suite in CI.
 2. Validate Arabic RTL in a real browser, including mixed-script content, mobile layout and accessibility.
-3. Audit the end-to-end publishing lifecycle, provider capability restrictions, retry behavior and uncertain outcomes.
+3. Validate the RSS/article SSRF fix, then close the open publishing handoff and provider-capability findings in the [source-backed audit](PUBLISHING_AND_PROVIDER_AUDIT.md).
 4. Run tenant-isolation/security tests and close critical findings.
 5. Implement only the missing pieces exposed by those audits.
 6. Defer production billing and any claim of universal auto-publishing until external prerequisites are evidenced.
@@ -44,6 +46,7 @@ Status vocabulary: **IMPLEMENTED** = code exists and has the stated evidence; **
 | GA-02 | P0 | Browser RTL, responsive layout and accessibility gate | OPEN | Server-rendered `lang/dir` does not prove every screen is usable in Arabic. |
 | GA-03 | P0 | Reliable publishing state machine and recovery | OPEN — AUDIT FIRST | Incorrect “Published” states, duplicate posts or blind retries are release-blocking reliability defects. |
 | GA-04 | P0 | Provider/action/media capability preflight | OPEN — AUDIT FIRST | Provider icons and adapter code do not prove a given account can publish a given content type. |
+| GA-15 | P0 | SSRF-safe RSS/article fetch and redirect handling | IMPLEMENTED_UNVERIFIED | Both configured feed URLs and RSS item links trigger server-side outbound requests; redirect targets and response sizes must be controlled. |
 | GA-05 | P0 | Tenant isolation, credential protection and audit trail | OPEN — AUDIT FIRST | Cross-client leakage or token exposure is unacceptable for agencies and business users. |
 | GA-06 | P1 | Arabic/French content workflow and optional Darija assistance | OPEN — QUALITY REVIEW | UI language, post language, writing style and timezone must stay independent. |
 | GA-07 | P1 | Mobile-first media resilience and draft recovery | OPEN — AUDIT FIRST | Upload interruption and weak connectivity must not lose content or cause duplicate publication. |
@@ -71,6 +74,22 @@ Acceptance:
 - [ ] CI artifacts expose actionable logs and preserve the failure exit code.
 
 Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dated 2026-10-21. See [official release notes](https://github.com/nodejs/nodejs.org/blob/main/apps/site/pages/en/blog/release/v22.23.4.md) and [GitHub Actions Node.js guidance](https://docs.github.com/en/actions/tutorials/build-and-test-code/nodejs).
+
+### GA-15 — SSRF-safe RSS and article retrieval
+
+**Finding:** source review found RSS feed retrieval delegated to `rss-parser.parseURL()` and RSS item/article retrieval using plain `fetch(url)`. The configured feed URL is external input, and links/redirects returned by the feed are separate external input. Validation of the initial URL alone does not establish that later redirects stay on public HTTPS destinations.
+
+**Change applied in this branch:**
+- [x] Add `fetchSafePublicHttpsText()` using the existing SSRF-safe dispatcher with pinned DNS resolution.
+- [x] Revalidate every redirect hop, reject non-public/non-HTTPS destinations and embedded credentials.
+- [x] Cap request time and streamed response size (2 MiB for feed XML, 5 MiB for article HTML).
+- [x] Route both RSS XML and article HTML retrieval through the shared helper.
+- [x] Add a Node test suite asserting unsafe schemes/private literal IPs/localhost/URL credentials are rejected before the injected fetch transport is called.
+- [ ] Run the regression suite under pinned Node.js `22.23.4` and pnpm `10.6.1`.
+- [ ] Confirm GitHub Actions reports a passing run and the full workspace build succeeds.
+- [ ] Add deterministic redirect and redirect-loop tests, including proving an unsafe redirect destination is never requested.
+
+**Current status:** `IMPLEMENTED_UNVERIFIED`. The safety tests are present in the branch, but are not marked passed until executed. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-sec-01).
 
 ### GA-02 — Browser-level RTL and accessibility
 
