@@ -13,6 +13,7 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Inventory root workspaces, package scripts, apps, libraries, provider adapters, schedulers/workers, database schema and tests.
 - [ ] Identify existing locale/i18n and RTL support; inspect how dates and timezones are stored and rendered.
 - [ ] Identify existing approval, workspace/tenant and role models before proposing new schema.
+- [x] Fix source-confirmed post/group write ownership gaps and add isolated tenant-guard regression tests; two-organization database/API coverage remains OPEN.
 - [ ] Run the documented dependency install and full workspace build in a reproducible environment.
 - [x] Run isolated repository regression commands: URL safety 6/6 and localization 4/4 on Node 22.22.1 / pnpm 10.6.1; exact pinned Node 22.23.4 and full CI/build remain OPEN.
 - [ ] Save raw command output, environment/tool versions, exit codes and any blockers as an audit artifact.
@@ -65,6 +66,7 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Add clear actionable states for expired permissions, provider errors and manual-only channels.
 - [ ] Test file/media upload interruptions and recovery.
 - [ ] Verify approval flow for at least one multi-user workspace and one separated client workspace.
+- [ ] Exercise cross-organization post/group IDs against a test database, including create/update/soft-delete and publishing workflow actions.
 - [ ] Add regression tests for all defects discovered in Phases 0–2.
 
 **Exit gate:** priority end-to-end workflows pass, including expected provider failures and credential expiry.
