@@ -85,7 +85,7 @@ Validate these segments through interviews and observed workflows before treatin
 - Content-language selector separate from UI language.
 - Arabic/French mixed-direction composer, hashtags, mentions, URLs, emoji and punctuation tests.
 - Locally relevant, editable content templates by business type; do not hard-code unverified cultural assumptions.
-- Timezone-aware scheduling with `Africa/Algiers` as a sensible default that users can change.
+- Timezone-aware scheduling that preserves the existing browser-detected IANA timezone and explicit user override. For Algeria-focused onboarding, `Africa/Algiers` may be suggested as an editable choice, but must not silently override device settings or a saved preference.
 - DZD display in commercial screens when actual DZD prices are established; never fabricate exchange rates or payment availability.
 - Local payment adapter(s) only after merchant eligibility, API documentation, certification, settlement and refund processes are verified.
 - Low-bandwidth and mobile network resilience: save drafts reliably, optimize media upload behavior, expose progress, and avoid duplicate publishing on retries.
