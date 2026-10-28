@@ -25,7 +25,8 @@ const getCountryCodeForFlag = (languageCode: string) => {
   // For multi-region languages, here are some common defaults
   if (languageCode === 'en') return 'GB';
   if (languageCode === 'es') return 'ES';
-  if (languageCode === 'ar') return 'SA';
+  // Arabic is a language, not a country. Use Algeria for this Algeria-first fork.
+  if (languageCode === 'ar') return 'DZ';
   if (languageCode === 'zh') return 'CN';
   if (languageCode === 'he') return 'IL';
   if (languageCode === 'ja') return 'JP';
