@@ -128,11 +128,16 @@ For each issue or change, record:
 ### Current state
 
 - [x] Confirmed repository is a populated fork of `gitroomhq/postiz-app`.
-- [x] Added product foundation documents on `feature/algeria-product-foundation`.
-- [ ] Baseline build/test execution — not yet verified by this documentation change.
-- [ ] Provider/API audit — open.
-- [ ] Product localization implementation — open.
-- [ ] Production launch — open.
+- [x] Locale foundation implemented on `feature/algeria-product-foundation`: supported-locale normalization, server-rendered `lang/dir`, client synchronization and Algeria-aware Arabic flag.
+- [x] Focused locale regression suite passed 4/4; frontend TypeScript check passed; optimized frontend build passed under sandbox Node 22.22.1; built-app SSR locale smoke tests passed 4/4.
+- [x] Created the [add-ons and gap register](ADD_ONS_AND_GAP_REGISTER.md) with 14 prioritized specifications, acceptance gates and audit-before-add constraints.
+- [x] Corrected the CI workflow to request Node.js 22.23.4, pnpm 10.6.1 and run the localization suite before the build.
+- [ ] GitHub Actions run for the latest branch commit — OPEN (the repository currently returns zero workflow runs; do not infer a pass).
+- [ ] Full workspace build verified under the declared runtime — OPEN.
+- [ ] Browser RTL/mobile/accessibility checks — OPEN.
+- [ ] Provider/API audit and authorized provider-side publishing evidence — OPEN.
+- [ ] Tenant-isolation, publishing recovery, data portability and production operations gates — OPEN.
+- [ ] Production launch — OPEN.
 
 ## Evidence-backed implementation progress (2026-10-28)\n\nThe ranked add-on/gap specifications are in [ADD_ONS_AND_GAP_REGISTER.md](ADD_ONS_AND_GAP_REGISTER.md). That register distinguishes source presence from verified behavior and prevents work on replacement subsystems until audits establish a real gap.
 
