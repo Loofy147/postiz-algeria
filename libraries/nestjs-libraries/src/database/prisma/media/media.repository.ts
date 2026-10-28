@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { PrismaRepository } from '@gitroom/nestjs-libraries/database/prisma/prisma.service';
 import { Injectable } from '@nestjs/common';
 import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/save.media.information.dto';
@@ -130,7 +131,7 @@ export class MediaRepository {
           },
         }
       : {};
-    const query = {
+    const query: { where: Prisma.MediaWhereInput } = {
       where: {
         organization: {
           id: org,
