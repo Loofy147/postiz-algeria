@@ -53,3 +53,21 @@ This shows existing direction-handling code, not that every screen is RTL-correc
 - [ ] Review the French resource's 36 English-identical values in context.
 - [ ] Test actual user language choice persistence across reload and authenticated/unauthenticated surfaces.
 - [ ] Evaluate Darija as content-generation style separately from interface localization.
+
+
+## Implementation follow-up — 2026-10-28
+
+The feature branch adds a shared locale utility at `libraries/react-shared-libraries/src/translation/locale.utils.ts`. It normalizes locale tags, resolves them against the supported language list with the configured fallback, and derives text direction from the primary language subtag. The authenticated app root renders validated `lang` and `dir` attributes server-side, reducing dependence on a post-mount direction correction. Client-side language changes update both attributes and remove their i18next event listener on cleanup. The Arabic language choice uses Algeria's `DZ` flag in this fork.
+
+### Verification evidence
+
+- `node --experimental-strip-types --test scripts/test-locale-utils.mjs` — **PASS, 4 tests** (regional locale normalization, blank/unsupported fallback, RTL/LTR detection and English/Arabic/French key-set parity).
+- TypeScript transpilation diagnostics on all five changed TS/TSX files — **PASS, 0 syntax diagnostics**.
+- `git diff --check` — **PASS**.
+- `corepack pnpm exec tsc --noEmit --pretty false -p apps/frontend/tsconfig.json` — **PASS** (exit code 0).
+- Production frontend build — pending final exit status at the time this record was prepared.
+- Browser screenshots, visual RTL behavior, accessibility and mobile checks — **OPEN**.
+
+### Timezone decision
+
+The existing implementation detects the browser timezone and supports a per-user override stored in the user record; it also retains the prior selection for routes outside the signed-in layout. The Algeria localization work therefore must not force `Africa/Algiers` onto every user. Any Algeria-focused suggestion should be an explicit, editable default and must preserve user overrides. Source inspected: `apps/frontend/src/components/layout/set.timezone.tsx`, `apps/frontend/src/components/new-layout/layout.component.tsx`, `apps/frontend/src/components/settings/metric.component.tsx`, and the `User.timezoneName` field in the Prisma schema.
