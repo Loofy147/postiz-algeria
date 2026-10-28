@@ -68,7 +68,8 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 - [x] Workflow-start errors propagate to each caller; callers report them through the same non-content, non-credential context.
 - [x] Error telemetry avoids post text, access tokens, and refresh tokens.
 - [x] Backend TypeScript check passes on local checkout commit `84aee2296bfae7a8f543313a6b0374fdee2fc344` with `NODE_OPTIONS=--max-old-space-size=3072` (zero diagnostics, exit 0); Node is 22.22.1 rather than pinned 22.23.4.
-- [ ] Complete the backend production build under the pinned toolchain.
+- [x] Backend production build `corepack pnpm --filter ./apps/backend run build`: PASS (exit 0) at checkout commit `84aee2296bfae7a8f543313a6b0374fdee2fc344` using Node 22.22.1 / pnpm 10.6.1.
+- [ ] Repeat the backend production build under pinned Node 22.23.4; full workspace CI/build remains OPEN.
 - [ ] Add a reconciliation test proving queued posts with no live workflow are detected and safely restarted.
 - [ ] Measure dispatch failures and queued-post age; confirm Sentry telemetry arrives in an enabled test environment.
 - [ ] Define the user-visible behavior when dispatch is unavailable; do not claim an actively running workflow unless durable handoff or reconciliation is evidenced.
