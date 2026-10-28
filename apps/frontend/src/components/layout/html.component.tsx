@@ -7,10 +7,13 @@ export const HtmlComponent: FC = () => {
   const [dir, setDir] = useState(settings.dir());
 
   useEffect(() => {
-    settings.on('languageChanged', (lng) => {
-      setDir(settings.dir());
-    });
-  }, []);
+    const updateDirection = () => setDir(settings.dir());
+
+    settings.on('languageChanged', updateDirection);
+    return () => {
+      settings.off('languageChanged', updateDirection);
+    };
+  }, [settings]);
 
   useEffect(() => {
     const htmlElement = document.querySelector('html');
