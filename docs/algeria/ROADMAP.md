@@ -16,7 +16,9 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Run the documented dependency install and existing tests/build in a reproducible environment.
 - [ ] Save raw command output, environment/tool versions, exit codes and any blockers as an audit artifact.
 - [ ] Review recent upstream security fixes and determine whether the fork is behind upstream.
-- [ ] Write a baseline report separating verified facts, inference and open questions.\n- [x] Create the prioritized [add-ons and gap register](ADD_ONS_AND_GAP_REGISTER.md), with source surfaces, owners/status vocabulary, acceptance criteria and no-duplication rules.\n- [x] Identify the CI/runtime mismatch: repository declares Node.js 22.23.4 while the previous build workflow used 22.12.0; workflow alignment and locale tests are included in this branch, but a successful Actions run is still required.
+- [ ] Write a baseline report separating verified facts, inference and open questions.
+- [x] Create the prioritized [add-ons and gap register](ADD_ONS_AND_GAP_REGISTER.md), with source surfaces, owners/status vocabulary, acceptance criteria and no-duplication rules.
+- [x] Identify the CI/runtime mismatch: repository declares Node.js 22.23.4 while the previous build workflow used 22.12.0; workflow alignment and locale tests are included in this branch, but a successful Actions run is still required.
 
 **Exit gate:** reproducible baseline report exists; test/build status is known, not assumed; no product implementation starts by duplicating an existing subsystem.
 
@@ -139,7 +141,9 @@ For each issue or change, record:
 - [ ] Tenant-isolation, publishing recovery, data portability and production operations gates — OPEN.
 - [ ] Production launch — OPEN.
 
-## Evidence-backed implementation progress (2026-10-28)\n\nThe ranked add-on/gap specifications are in [ADD_ONS_AND_GAP_REGISTER.md](ADD_ONS_AND_GAP_REGISTER.md). That register distinguishes source presence from verified behavior and prevents work on replacement subsystems until audits establish a real gap.
+## Evidence-backed implementation progress (2026-10-28)
+
+The ranked add-on/gap specifications are in [ADD_ONS_AND_GAP_REGISTER.md](ADD_ONS_AND_GAP_REGISTER.md). That register distinguishes source presence from verified behavior and prevents work on replacement subsystems until audits establish a real gap.
 
 - [x] Shared locale utilities resolve supported locale codes and derive text direction from the primary language subtag.
 - [x] The authenticated app root now renders validated `lang` and `dir` attributes server-side from the language cookie.
