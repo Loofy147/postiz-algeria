@@ -12,6 +12,7 @@ This directory defines the intended localized product, the implementation sequen
 - [Product blueprint](PRODUCT_BLUEPRINT.md) — target users, differentiated capabilities, architecture constraints, decisions and success measures.
 - [Add-ons and gap register](ADD_ONS_AND_GAP_REGISTER.md) — prioritized gaps, acceptance criteria, evidence requirements and audit-before-add rules.
 - [Publishing reliability and provider capability audit](PUBLISHING_AND_PROVIDER_AUDIT.md) — source-backed publishing lifecycle findings, SSRF mitigation, and provider/entitlement gaps.
+- [Second-pass engineering review](SECOND_PASS_REVIEW.md) — prioritized source-backed findings on workflow dispatch, concurrency, autopost reliability, SSRF test coverage, tenant isolation, runtime pins, and audit consistency.
 - [Baseline source audit](BASELINE_AUDIT.md) — repository provenance and verified current localization/RTL findings; separates source inspection from runtime verification.
 - [Implementation roadmap](ROADMAP.md) — phased work, exit criteria and progress checklist.
 - [Integration capability matrix](INTEGRATION_CAPABILITY_MATRIX.md) — per-provider verification record; an inherited connector is not automatically production-approved.
