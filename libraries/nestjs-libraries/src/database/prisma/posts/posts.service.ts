@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
@@ -943,6 +944,22 @@ export class PostsService {
     workflowId = `post_${postId}`
   ) {
     // Keep operational context useful without attaching post text or tokens.
+    const errorDetails =
+      err instanceof Error
+        ? { name: err.name, message: err.message.slice(0, 500) }
+        : { name: 'UnknownError', message: 'A non-Error value was thrown' };
+    const context = {
+      component: 'posting-workflow-dispatch',
+      operation,
+      taskQueue,
+      postId,
+      organizationId: orgId,
+      workflowId,
+      error: errorDetails,
+    };
+
+    // Log even when Sentry is not configured; never include post text or tokens.
+    Logger.error(JSON.stringify(context), undefined, 'PostsService');
     Sentry.captureException(err, {
       tags: {
         component: 'posting-workflow-dispatch',
@@ -993,12 +1010,12 @@ export class PostsService {
             orgId,
             executionInfo.workflowId
           );
+          // Do not start another workflow when we cannot prove the old run was
+          // stopped: TERMINATE_EXISTING could interrupt an in-flight publish.
+          return false;
         }
       }
     } catch (err) {
-      // A failure to inspect previous executions must be visible. We still try
-      // to start the deterministic workflow ID, which is the final conflict
-      // guard, instead of suppressing the original problem.
       this.reportWorkflowDispatchFailure(
         err,
         'list-running',
@@ -1006,6 +1023,9 @@ export class PostsService {
         postId,
         orgId
       );
+      // Fail closed: if the running-execution list is unavailable, starting
+      // with TERMINATE_EXISTING might terminate an unknown active publisher.
+      return false;
     }
 
     if (state === 'DRAFT') {
