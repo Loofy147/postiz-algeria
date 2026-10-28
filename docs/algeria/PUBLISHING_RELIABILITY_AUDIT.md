@@ -50,7 +50,9 @@
 
 **Evidence:** the persisted `State` enum contains only `QUEUE`, `PUBLISHED`, `ERROR`, and `DRAFT`. The provider abstraction has `PublishedWithError` and pending-status contracts, which are useful existing mechanisms.
 
-**Risk to verify:** the current persisted states may not distinguish “provider accepted the post but the response/worker outcome is unknown” from an ordinary failure in every path. Adding a new state is not the default solution; first inspect the Temporal workflow, provider implementations, reconciliation routines, and stored release IDs.
+**Follow-up source trace:** `apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts` explicitly classifies activity timeouts as unknown when the activity had started, has a `markUnconfirmed` path that writes `ERROR` plus a warning telling the user to check the provider account before reposting, and treats pending posts through read-only `checkPostStatus` plus `finalizePost`. `apps/orchestrator/src/activities/post.activity.ts` documents that once the provider accepted the post, follow-up streak/notification failures must not trigger another publish. This is a meaningful existing safeguard.
+
+**Remaining risk to verify:** the durable database enum still has no separate ambiguous state; ambiguity is currently represented through `ERROR` plus error/notification content. Confirm that this remains distinguishable and queryable by operators and that every provider-specific post path obeys the no-blind-retry contract. Do not add a new state until these checks show the existing representation is insufficient.
 
 **Required checks:**
 - Trace provider request → response parsing → workflow result → repository state write for representative providers.
@@ -60,7 +62,7 @@
 
 **Acceptance:** each tested failure is either provider-confirmed success, safe retry, terminal failure, or explicitly ambiguous with reconciliation; none is silently mislabeled as published.
 
-**Status:** OPEN — workflow and provider trace required.
+**Status:** PARTIALLY INVESTIGATED — workflow-level safeguard found; provider-by-provider coverage, operator queryability, and fault-injection tests remain OPEN.
 
 ### PR-AUD-03 — Tenant scope of internal mutation helpers needs call-site proof
 
@@ -95,7 +97,7 @@
 
 ## 3. Immediate implementation plan
 
-1. Locate and trace `postWorkflowV112`, its activities, and representative provider implementations before changing the state model.
+1. Continue tracing `postWorkflowV112` and its activities into representative provider implementations; the workflow source has been located and a preliminary safeguard is confirmed.
 2. Add tests for deletion/cancellation failure and dispatch concurrency using the repository's existing Temporal test approach.
 3. Trace all callers of `changeState`, `updatePost`, `getPost`, and `getErrorsByPostIds`; turn any confirmed authorization gap into a minimal fix plus regression test.
 4. Audit provider error redaction and add tests before changing log formats.
@@ -106,7 +108,7 @@
 - No live social provider account or provider-approved test publish was used.
 - No claim is made that duplicate publication is occurring.
 - No claim is made that cross-tenant access is exploitable.
-- No full Temporal workflow/provider adapter trace has been completed.
+- Temporal workflow and activity code have been inspected, but the provider adapter trace and fault-injection tests are incomplete.
 - No CI run is claimed by this audit.
 - Production readiness remains OPEN.
 
@@ -117,6 +119,8 @@
 - [Posts repository](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts)
 - [Post ownership filters](../../libraries/nestjs-libraries/src/database/prisma/posts/post.ownership.filters.ts)
 - [Post ownership tests](../../scripts/test-post-ownership-safety.mjs)
+- [Temporal post workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts)
+- [Post activities](../../apps/orchestrator/src/activities/post.activity.ts)
 - [Social provider abstraction](../../libraries/nestjs-libraries/src/integrations/social.abstract.ts)
 - [Token refresh service](../../libraries/nestjs-libraries/src/integrations/refresh.integration.service.ts)
 - [Prisma schema](../../libraries/nestjs-libraries/src/database/prisma/schema.prisma)
