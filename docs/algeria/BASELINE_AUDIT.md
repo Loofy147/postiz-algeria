@@ -65,7 +65,7 @@ The feature branch adds a shared locale utility at `libraries/react-shared-libra
 - TypeScript transpilation diagnostics on all five changed TS/TSX files — **PASS, 0 syntax diagnostics**.
 - `git diff --check` — **PASS**.
 - `corepack pnpm exec tsc --noEmit --pretty false -p apps/frontend/tsconfig.json` — **PASS** (exit code 0).
-- Production frontend build — pending final exit status at the time this record was prepared.
+- Production frontend build — **PASS**: `corepack pnpm --filter ./apps/frontend run build` completed with exit code 0, including optimized compile, Next.js TypeScript, page-data collection and static-page generation. The sandbox used Node `22.22.1` while the repository requests `22.23.4`; repeat in CI on the pinned runtime.
 - Browser screenshots, visual RTL behavior, accessibility and mobile checks — **OPEN**.
 
 ### Timezone decision
