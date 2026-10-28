@@ -28,7 +28,7 @@ The new `fetchSafePublicHttpsText()` helper:
 
 Both RSS feed retrieval and article-link retrieval now use this helper. Empty feeds or feeds without a usable item link are reported as unsuccessful rather than treated as a valid latest item.
 
-**Change/evidence paths:** [safe public HTTPS fetch helper](../libraries/nestjs-libraries/src/dtos/webhooks/safe.public.https.fetch.ts), [URL safety regression tests](../scripts/test-safe-public-fetch.mjs), [autopost service](../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [autopost DTO validation](../libraries/nestjs-libraries/src/dtos/autopost/autopost.dto.ts), [existing SSRF dispatcher](../libraries/nestjs-libraries/src/dtos/webhooks/ssrf.safe.dispatcher.ts).
+**Change/evidence paths:** [safe public HTTPS fetch helper](../../libraries/nestjs-libraries/src/dtos/webhooks/safe.public.https.fetch.ts), [URL safety regression tests](../../scripts/test-safe-public-fetch.mjs), [autopost service](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [autopost DTO validation](../../libraries/nestjs-libraries/src/dtos/autopost/autopost.dto.ts), [existing SSRF dispatcher](../../libraries/nestjs-libraries/src/dtos/webhooks/ssrf.safe.dispatcher.ts).
 
 **Remaining acceptance gates:**
 - [x] Apply safe fetch to both configured RSS feeds and RSS item links.
@@ -44,7 +44,7 @@ Both RSS feed retrieval and article-link retrieval now use this helper. Empty fe
 
 The current `post.workflow.v1.1.2.ts` separates read-only status checks from irreversible publishing mutations. Mutation activities have no automatic SDK retries; workflow logic distinguishes a heartbeat timeout before an activity started from a timeout after execution may have begun. The pending-post contract uses `pending`, `ready`, and `completed` states. Ambiguous outcomes are marked unconfirmed and the user is told to check the provider account before retrying. The provider interface explicitly documents that finalization must not repeat non-idempotent mutations after an unknown outcome. `PublishedWithError` preserves a provider post ID/URL when the external post exists but a follow-up mutation fails.
 
-**Source paths:** [post workflow v1.1.2](../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [post activities](../apps/orchestrator/src/activities/post.activity.ts), [provider operation contract](../libraries/nestjs-libraries/src/integrations/social/social.integrations.interface.ts), [provider error types](../libraries/nestjs-libraries/src/integrations/social.abstract.ts).
+**Source paths:** [post workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [post activities](../../apps/orchestrator/src/activities/post.activity.ts), [provider operation contract](../../libraries/nestjs-libraries/src/integrations/social/social.integrations.interface.ts), [provider error types](../../libraries/nestjs-libraries/src/integrations/social.abstract.ts).
 
 **Remaining acceptance gates:**
 - [ ] Fault-injection tests for pre-request failure, accepted request with lost response, worker restart, duplicate workflow signal, and provider status polling outage.
@@ -65,7 +65,7 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 - Add a reconciliation test proving queued posts with no live workflow are detected and safely restarted.
 - Define the user-visible behavior when dispatch is unavailable; do not claim a post is actively scheduled unless durable workflow handoff or reconciliation is evidenced.
 
-**Source paths:** [PostsService](../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [missing-post workflow](../apps/orchestrator/src/workflows/missing.post.workflow.ts).
+**Source paths:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [missing-post workflow](../../apps/orchestrator/src/workflows/missing.post.workflow.ts).
 
 ### PUB-CAP-01 — Provider support cannot yet be represented as one verified product promise
 
@@ -85,7 +85,7 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 
 Do not add a second capability subsystem until the existing adapter/settings model has been assessed against these acceptance fields. Preflight must enforce limitations server-side before a post enters the publishing queue.
 
-**Source paths:** [integration manager](../libraries/nestjs-libraries/src/integrations/integration.manager.ts), [provider contract](../libraries/nestjs-libraries/src/integrations/social/social.integrations.interface.ts), [server-side post validation](../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts).
+**Source paths:** [integration manager](../../libraries/nestjs-libraries/src/integrations/integration.manager.ts), [provider contract](../../libraries/nestjs-libraries/src/integrations/social/social.integrations.interface.ts), [server-side post validation](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts).
 
 ### PUB-AUTH-01 — Autopost entitlement behavior is inconsistent across mutations
 
@@ -100,7 +100,7 @@ The global `PoliciesGuard` returns `true` when a route has no `@CheckPolicies` m
 - Prove users cannot operate on another organization's autopost ID.
 - Keep service-level organization constraints even when controller policies exist.
 
-**Source paths:** [autopost controller](../apps/backend/src/api/routes/autopost.controller.ts), [autopost repository](../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.repository.ts), [policy guard](../apps/backend/src/services/auth/permissions/permissions.guard.ts), [policy service](../apps/backend/src/services/auth/permissions/permissions.service.ts).
+**Source paths:** [autopost controller](../../apps/backend/src/api/routes/autopost.controller.ts), [autopost repository](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.repository.ts), [policy guard](../../apps/backend/src/services/auth/permissions/permissions.guard.ts), [policy service](../../apps/backend/src/services/auth/permissions/permissions.service.ts).
 
 ## Next execution order
 
