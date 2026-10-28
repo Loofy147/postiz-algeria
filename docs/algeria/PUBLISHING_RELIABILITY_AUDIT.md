@@ -27,6 +27,25 @@
 | Provider exception contract | `libraries/nestjs-libraries/src/integrations/social.abstract.ts` | Defines typed failure cases including `RefreshToken`, `Disconnect`, `PublishedWithError`, and `BadBody`; documents pending-post status checks and finalization. | FACT — abstractions exist; actual provider implementations and workflow mapping OPEN |
 | Error persistence | `libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts` (`changeState`) | Error handling may persist serialized error details and a supplied body into the error table. | FACT — persistence path exists; confirm upstream sanitization and data retention/redaction before production use |
 
+## 1A. Representative provider adapter trace
+
+A read-only source inspection of four adapters found they use the pending/status/finalization contract, but this is **source-level evidence only**:
+
+| Provider adapter | Observed implementation | Remaining verification |
+|---|---|---|
+| Instagram — `libraries/nestjs-libraries/src/integrations/social/instagram.provider.ts` | `postPending`, read-only container status checks, and `finalizePost`; source comments describe resuming when a prior finalization published but died before reporting. | Test single media, carousel, story, timeout after publish, token rejection, and account/app approval prerequisites. |
+| TikTok — `libraries/nestjs-libraries/src/integrations/social/tiktok.provider.ts` | `postPending` returns a publish ID; `checkPostStatus` maps pending, complete, inbox/draft-like and failed states; transient status-check errors are kept pending. | Validate every status mapping against current official API docs and test account-type/audit restrictions and timeout recovery. |
+| YouTube — `libraries/nestjs-libraries/src/integrations/social/youtube.provider.ts` | Uses resumable upload state, checks upload offset/status, and resumes remaining bytes in `finalizePost`. | Test interrupted chunks, expired upload sessions, thumbnail failure after video acceptance, quota and privacy settings. |
+| Facebook — `libraries/nestjs-libraries/src/integrations/social/facebook.provider.ts` | Implements a pending contract for media/story publishing, checks media readiness, and uses an `attempting/confirmed/publishedCount` handshake before finalization. | Fault-inject each handshake boundary and verify no duplicate publication; verify scopes and eligible account types. |
+
+The source supports the conclusion that a generalized pending workflow and provider-specific recovery mechanisms already exist. **Do not replace these with a new publishing engine.** Focus next on regression coverage for failure boundaries, provider-specific contract conformance, deletion/cancellation, and observability.
+
+Additional source links:
+- [Instagram adapter](../../libraries/nestjs-libraries/src/integrations/social/instagram.provider.ts)
+- [TikTok adapter](../../libraries/nestjs-libraries/src/integrations/social/tiktok.provider.ts)
+- [YouTube adapter](../../libraries/nestjs-libraries/src/integrations/social/youtube.provider.ts)
+- [Facebook adapter](../../libraries/nestjs-libraries/src/integrations/social/facebook.provider.ts)
+
 ## 2. Preliminary findings
 
 ### PR-AUD-01 — Deletion cancellation failure is not observable
@@ -97,7 +116,7 @@
 
 ## 3. Immediate implementation plan
 
-1. Continue tracing `postWorkflowV112` and its activities into representative provider implementations; the workflow source has been located and a preliminary safeguard is confirmed.
+1. Add fault-injection tests around the existing `postWorkflowV112` and provider pending/finalization contracts; four representative provider adapters have now been inspected at source level.
 2. Add tests for deletion/cancellation failure and dispatch concurrency using the repository's existing Temporal test approach.
 3. Trace all callers of `changeState`, `updatePost`, `getPost`, and `getErrorsByPostIds`; turn any confirmed authorization gap into a minimal fix plus regression test.
 4. Audit provider error redaction and add tests before changing log formats.
@@ -123,4 +142,8 @@
 - [Post activities](../../apps/orchestrator/src/activities/post.activity.ts)
 - [Social provider abstraction](../../libraries/nestjs-libraries/src/integrations/social.abstract.ts)
 - [Token refresh service](../../libraries/nestjs-libraries/src/integrations/refresh.integration.service.ts)
+- [Instagram adapter](../../libraries/nestjs-libraries/src/integrations/social/instagram.provider.ts)
+- [TikTok adapter](../../libraries/nestjs-libraries/src/integrations/social/tiktok.provider.ts)
+- [YouTube adapter](../../libraries/nestjs-libraries/src/integrations/social/youtube.provider.ts)
+- [Facebook adapter](../../libraries/nestjs-libraries/src/integrations/social/facebook.provider.ts)
 - [Prisma schema](../../libraries/nestjs-libraries/src/database/prisma/schema.prisma)
