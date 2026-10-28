@@ -33,6 +33,7 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Test publishing only in provider-approved environments/accounts; never treat a UI success as proof of a provider publish.
 - [ ] Record API quotas, approval/audit prerequisites, token expiry, analytics availability and known limitations.
 - [ ] Map scheduler/worker retry behavior and possible duplicate-publish cases.
+- [x] Add a preliminary source-backed [Publishing Reliability Audit](PUBLISHING_RELIABILITY_AUDIT.md) identifying confirmed code surfaces and explicitly open follow-up tests; no provider or production claims are made.
 - [x] Inspect the Temporal publishing workflow's existing unknown-outcome and duplicate-prevention contracts; broad provider-by-provider fault-injection remains OPEN.
 - [x] Replace empty workflow-dispatch catches with Sentry reporting and propagated start failures at the callers. Backend typecheck, telemetry-delivery verification and reconciliation tests remain OPEN.
 - [ ] Identify observability gaps: job status, logs, queue lag, reconciliation, alerting and operator actions.
