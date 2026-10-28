@@ -13,7 +13,8 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Inventory root workspaces, package scripts, apps, libraries, provider adapters, schedulers/workers, database schema and tests.
 - [ ] Identify existing locale/i18n and RTL support; inspect how dates and timezones are stored and rendered.
 - [ ] Identify existing approval, workspace/tenant and role models before proposing new schema.
-- [ ] Run the documented dependency install and existing tests/build in a reproducible environment.
+- [ ] Run the documented dependency install and full workspace build in a reproducible environment.
+- [x] Run isolated repository regression commands: URL safety 6/6 and localization 4/4 on Node 22.22.1 / pnpm 10.6.1; exact pinned Node 22.23.4 and full CI/build remain OPEN.
 - [ ] Save raw command output, environment/tool versions, exit codes and any blockers as an audit artifact.
 - [ ] Review recent upstream security fixes and determine whether the fork is behind upstream.
 - [ ] Write a baseline report separating verified facts, inference and open questions.
@@ -32,7 +33,7 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Record API quotas, approval/audit prerequisites, token expiry, analytics availability and known limitations.
 - [ ] Map scheduler/worker retry behavior and possible duplicate-publish cases.
 - [x] Inspect the Temporal publishing workflow's existing unknown-outcome and duplicate-prevention contracts; broad provider-by-provider fault-injection remains OPEN.
-- [ ] Close the workflow-start observability gap: start/list errors are currently swallowed and require structured reporting plus safe reconciliation tests.
+- [x] Replace empty workflow-dispatch catches with Sentry reporting and propagated start failures at the callers. Backend typecheck, telemetry-delivery verification and reconciliation tests remain OPEN.
 - [ ] Identify observability gaps: job status, logs, queue lag, reconciliation, alerting and operator actions.
 - [ ] Complete [Integration Capability Matrix](INTEGRATION_CAPABILITY_MATRIX.md) with evidence for each priority provider.
 
