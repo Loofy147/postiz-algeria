@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import Parser from 'rss-parser';
+import { fetchSafePublicHttpsText } from '@gitroom/nestjs-libraries/dtos/webhooks/safe.public.https.fetch';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
@@ -139,16 +140,29 @@ export class AutopostService {
 
   async loadXML(url: string) {
     try {
-      const { items } = await parser.parseURL(url);
+      // Feed URLs and redirects are external input. Fetch each hop through the
+      // pinned-DNS SSRF guard instead of letting rss-parser fetch the URL itself.
+      const xml = await fetchSafePublicHttpsText(url, {
+        maxBytes: 2 * 1024 * 1024,
+      });
+      const { items } = await parser.parseString(xml);
+      if (!items?.length) {
+        return { success: false };
+      }
+
       const findLast = items.reduce(
         (all: any, current: any) => {
-          if (dayjs(current.pubDate).isAfter(all.pubDate)) {
+          if (current.pubDate && dayjs(current.pubDate).isAfter(all.pubDate)) {
             return current;
           }
           return all;
         },
         { pubDate: dayjs().subtract(100, 'years') }
       );
+
+      if (!findLast.link) {
+        return { success: false };
+      }
 
       return {
         success: true,
@@ -164,7 +178,7 @@ export class AutopostService {
           .trim(),
       };
     } catch (err) {
-      /** sent **/
+      // A feed can be unavailable or unsafe; treat it as unavailable.
     }
 
     return { success: false };
@@ -176,7 +190,7 @@ export class AutopostService {
         messages: {
           reducer: (currentState, updateValue) =>
             currentState.concat(updateValue),
-          default: () => [],
+          default: (): BaseMessage[] => [],
         },
         body: null,
         description: null,
@@ -189,7 +203,12 @@ export class AutopostService {
 
   async loadUrl(url: string) {
     try {
-      const loadDom = new JSDOM(await (await fetch(url)).text());
+      // RSS item links are untrusted too. Do not fetch them with plain fetch:
+      // revalidate each redirect and cap both response size and duration.
+      const html = await fetchSafePublicHttpsText(url, {
+        maxBytes: 5 * 1024 * 1024,
+      });
+      const loadDom = new JSDOM(html);
       loadDom.window.document
         .querySelectorAll('script')
         .forEach((s) => s.remove());

@@ -16,6 +16,10 @@ import countries from 'i18n-iso-countries';
 // Register required locales
 import countriesEn from 'i18n-iso-countries/langs/en.json';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
+import {
+  getLanguageDirection,
+  resolveSupportedLanguage,
+} from '@gitroom/react/translation/locale.utils';
 import { ModalWrapperComponent } from '../new-launch/modal.wrapper.component';
 
 import clsx from 'clsx';
@@ -25,7 +29,8 @@ const getCountryCodeForFlag = (languageCode: string) => {
   // For multi-region languages, here are some common defaults
   if (languageCode === 'en') return 'GB';
   if (languageCode === 'es') return 'ES';
-  if (languageCode === 'ar') return 'SA';
+  // Arabic is a language, not a country. Use Algeria for this Algeria-first fork.
+  if (languageCode === 'ar') return 'DZ';
   if (languageCode === 'zh') return 'CN';
   if (languageCode === 'he') return 'IL';
   if (languageCode === 'ja') return 'JP';
@@ -68,13 +73,20 @@ export const ChangeLanguageComponent = () => {
   const modals = useModals();
   const t = useT();
 
-  const handleLanguageChange = (language: string) => {
+  const handleLanguageChange = (requestedLanguage: string) => {
+    const language = resolveSupportedLanguage(
+      requestedLanguage,
+      availableLanguages,
+      fallbackLng
+    );
     setCookie(language);
-    i18next.changeLanguage(language);
+    void i18next.changeLanguage(language);
     modals.closeCurrent();
-    const rtlLanguages = ['he', 'ar'];
-    const dir = rtlLanguages.includes(language) ? 'rtl' : 'ltr';
-    document.documentElement.setAttribute('dir', dir);
+    document.documentElement.setAttribute('lang', language);
+    document.documentElement.setAttribute(
+      'dir',
+      getLanguageDirection(language)
+    );
   };
 
   // Function to get language name in its native script
