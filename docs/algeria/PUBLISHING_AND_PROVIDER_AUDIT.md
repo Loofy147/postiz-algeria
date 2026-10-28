@@ -8,7 +8,7 @@
 
 This pass inspected the feed-based autopost path, the Temporal publishing workflow, provider contracts, post persistence paths, and the subscription policy guard. It did not use live social accounts or execute real provider publishes. Provider approval, account-type permissions, and real-world outcomes remain **OPEN**. Source inspection proves that code exists, not that an external platform accepts an operation.
 
-For reproducibility, relevant reviewed source blob SHAs are: `AutopostService` after hardening `4d366943096084c164cbf4592c0aef938937809d`; SSRF-safe text fetch `7adc28c0a0499d9baa61e47d4a08ea3229ea2326`; post workflow v1.1.2 `f2976a2645c1d66ae0f9b512244d7e93edf20877`; `PostsService` after dispatch-reporting change `4346b93b3eda089d861c99691515dc140f83a5f7`; `PostsRepository` `c2830afdd0c3cdbd3ce78377b7066562fc58de06`; provider interface `261b84e25e623b8ca63c50b4cf0f2569d8a62b7b`.
+For reproducibility, relevant reviewed source blob SHAs are: `AutopostService` after hardening `4d366943096084c164cbf4592c0aef938937809d`; SSRF-safe text fetch `7adc28c0a0499d9baa61e47d4a08ea3229ea2326`; post workflow v1.1.2 `f2976a2645c1d66ae0f9b512244d7e93edf20877`; `PostsService` after dispatch-reporting and fail-closed change (current branch source; see file history); `PostsRepository` `c2830afdd0c3cdbd3ce78377b7066562fc58de06`; provider interface `261b84e25e623b8ca63c50b4cf0f2569d8a62b7b`.
 
 ## Findings
 
@@ -63,7 +63,8 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 
 **Change applied in this branch:**
 - [x] A missing Temporal client now raises an explicit error rather than returning apparent success through optional chaining.
-- [x] Failures while listing or terminating previous executions are reported through Sentry with operation, post ID, organization ID, task queue, and workflow ID context.
+- [x] Failures while listing or terminating previous executions are reported through Sentry and the NestJS logger with operation, post ID, organization ID, task queue, and workflow ID context.
+- [x] If running executions cannot be listed or an existing execution cannot be terminated, dispatch fails closed rather than starting with `TERMINATE_EXISTING` and potentially interrupting an active publish.
 - [x] Workflow-start errors propagate to each caller; callers report them through the same non-content, non-credential context.
 - [x] Error telemetry avoids post text, access tokens, and refresh tokens.
 - [ ] Run backend typecheck/build and verify the Sentry options compile under the pinned toolchain.
@@ -71,7 +72,7 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 - [ ] Measure dispatch failures and queued-post age; confirm Sentry telemetry arrives in an enabled test environment.
 - [ ] Define the user-visible behavior when dispatch is unavailable; do not claim an actively running workflow unless durable handoff or reconciliation is evidenced.
 
-The existing missing-post sweep runs on an hourly cadence and is a recovery path; it is not immediate dispatch confirmation.
+The existing missing-post sweep runs on an hourly cadence and is a recovery path; it is not immediate dispatch confirmation. A failed inspection/termination now returns without starting a replacement workflow; the post must be reconciled by the recovery process.
 
 **Source paths:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [missing-post workflow](../../apps/orchestrator/src/workflows/missing.post.workflow.ts), [post activity recovery](../../apps/orchestrator/src/activities/post.activity.ts).
 
