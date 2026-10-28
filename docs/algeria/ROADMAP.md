@@ -142,5 +142,5 @@ For each issue or change, record:
 - [x] The Arabic language-picker flag maps to Algeria (`DZ`) in this fork.
 - [x] Focused locale tests pass: regional locale normalization, invalid/blank fallback, RTL/LTR direction and translation-key parity (4/4).
 - [x] Frontend TypeScript check passed: `corepack pnpm exec tsc --noEmit --pretty false -p apps/frontend/tsconfig.json` (exit code 0).
-- [ ] Production frontend build — pending final exit status.
+- [x] Optimized frontend production build passed: `corepack pnpm --filter ./apps/frontend run build` (exit code 0). Environment warning: sandbox Node was `22.22.1`; root package requests `22.23.4`, so CI should re-verify under the pinned runtime.
 - [ ] Browser-level RTL and mobile visual checks remain OPEN.
