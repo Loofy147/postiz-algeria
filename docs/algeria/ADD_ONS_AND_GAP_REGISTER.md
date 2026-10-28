@@ -48,6 +48,7 @@ Status vocabulary: **IMPLEMENTED** = code exists and has the stated evidence; **
 | GA-04 | P0 | Provider/action/media capability preflight | OPEN — AUDIT FIRST | Provider icons and adapter code do not prove a given account can publish a given content type. |
 | GA-15 | P0 | SSRF-safe RSS/article fetch and redirect handling | IMPLEMENTED_UNVERIFIED | Both configured feed URLs and RSS item links trigger server-side outbound requests; redirect targets and response sizes must be controlled. |
 | GA-16 | P1 | Publishing workflow dispatch observability and reconciliation | IMPLEMENTED_UNVERIFIED | Silently failed Temporal workflow starts can leave scheduled posts waiting for the periodic recovery sweep without immediate diagnostic evidence. |
+| GA-17 | P0 | Post/group tenant ownership on writes | IMPLEMENTED_UNVERIFIED | Client-supplied post and group IDs must not be able to mutate or soft-delete another organization's content. |
 | GA-05 | P0 | Tenant isolation, credential protection and audit trail | OPEN — AUDIT FIRST | Cross-client leakage or token exposure is unacceptable for agencies and business users. |
 | GA-06 | P1 | Arabic/French content workflow and optional Darija assistance | OPEN — QUALITY REVIEW | UI language, post language, writing style and timezone must stay independent. |
 | GA-07 | P1 | Mobile-first media resilience and draft recovery | OPEN — AUDIT FIRST | Upload interruption and weak connectivity must not lose content or cause duplicate publication. |
@@ -156,6 +157,22 @@ Acceptance:
 - Provider-specific limits are periodically revalidated against official docs.
 
 Example external dependency: TikTok states that direct posting requires approved `video.publish` access and that unaudited clients are restricted to private visibility. Therefore a working upload flow is not proof of public publishing. See the [official Direct Post prerequisites](https://developers.tiktok.com/docs/en/content-posting-api-get-started).
+
+### GA-17 — Post and group ownership on writes
+
+**Finding:** a client-supplied post ID reached an upsert whose unique filter used only the ID. Group cleanup also relied on group IDs without the organization filter. A route-level check of the selected integration does not establish ownership of a separately supplied post or group ID.
+
+**Change applied in this branch:**
+- [x] Verify all supplied post IDs are unique and resolve to live posts owned by the current organization before a write.
+- [x] Require a supplied group to be found within the current organization.
+- [x] Add the current organization and live-row condition to the post upsert's extended unique filter.
+- [x] Add organization scope to old-group lookup and both soft-delete cleanup queries.
+- [x] Add six deterministic unit tests and a dedicated CI test step.
+- [ ] Run backend typecheck/build and confirm no project-wide regressions.
+- [ ] Add two-organization database/API tests, including malicious ID/group attempts.
+- [ ] Audit all other tenant-owned routes and background jobs; this finding is not evidence of a full tenant audit.
+
+**Status:** `IMPLEMENTED_UNVERIFIED`; local unit tests pass, wider database/API/CI gates remain open. See [PUB-SEC-02](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-sec-02).
 
 ### GA-05 — Tenant isolation and credentials
 
