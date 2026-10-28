@@ -50,9 +50,11 @@ Additional source links:
 
 ### PR-AUD-01 — Deletion cancellation failure is not observable
 
-**Evidence:** `PostsService.deletePost` catches and ignores errors around listing and terminating Temporal workflows. The post group is marked deleted before cancellation is attempted.
+**Initial evidence:** `PostsService.deletePost` caught and ignored errors around listing and terminating Temporal workflows. The post group is marked deleted before cancellation is attempted.
 
-**Risk to verify:** a workflow may remain running or cancellation may fail without a durable operator signal. A still-running workflow could interact with a post that users believe has been deleted.
+**Change now committed to this branch:** cancellation errors are reported through the existing structured/Sentry reporting helper, and the API response includes `workflowCancellation: 'not_required' | 'requested' | 'unconfirmed'`. This reports whether a cancellation request was issued or could not be confirmed; it does not claim that an external provider request already in flight was reversed.
+
+**Residual risk to verify:** a workflow may still be in a provider request when termination is requested. The workflow must be tested at that boundary and must check current/deleted state before any new irreversible provider action where feasible.
 
 **Required checks:**
 - Inject list, describe, and terminate failures.
@@ -61,9 +63,9 @@ Additional source links:
 - Define a safe user-visible deletion result and an operator-visible reconciliation record.
 - Do not silently report successful cancellation unless it is confirmed.
 
-**Acceptance:** failed cancellation produces a structured log/metric/alert and a durable recoverable outcome; tests prove that deletion does not trigger an unsafe second publish.
+**Acceptance:** failed cancellation produces structured logs and a Sentry event; the response reports `unconfirmed`; tests prove that deletion does not trigger an unsafe second publish. Metrics/alerts and a durable reconciliation queue remain OPEN.
 
-**Status:** EXPERIMENT NOT RUN — no production defect claim yet.
+**Status:** CODE MITIGATION COMMITTED; automated tests and in-flight provider-call fault injection remain OPEN.
 
 ### PR-AUD-02 — Ambiguous external publish outcome needs explicit verification
 
@@ -117,6 +119,9 @@ Additional source links:
 ## 3. Immediate implementation plan
 
 1. Add fault-injection tests around the existing `postWorkflowV112` and provider pending/finalization contracts; four representative provider adapters have now been inspected at source level.
+2. Test the new deletion cancellation result for Temporal unavailable, workflow-list failure, terminate failure, no active workflow, and successful terminate request.
+3. Continue tracing every caller of `changeState`, `updatePost`, `getPost`, and `getErrorsByPostIds`; fix only confirmed tenant-boundary gaps.
+4. Verify persisted provider error redaction and retention.
 2. Add tests for deletion/cancellation failure and dispatch concurrency using the repository's existing Temporal test approach.
 3. Trace all callers of `changeState`, `updatePost`, `getPost`, and `getErrorsByPostIds`; turn any confirmed authorization gap into a minimal fix plus regression test.
 4. Audit provider error redaction and add tests before changing log formats.
