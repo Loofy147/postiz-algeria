@@ -42,8 +42,9 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Verify mixed-direction strings: Arabic + Latin product names, links, handles, hashtags, numbers and punctuation.
 - [ ] Add Arabic and French user-facing strings for the first supported workflows.
 - [ ] Add optional Darija generation settings only if the selected generation pathway and quality review are ready.
-- [ ] Use `Africa/Algiers` as default timezone only through a configurable user preference.
-- [ ] Add automated localization/formatting checks and a documented manual review script.
+- [ ] Preserve the browser-detected IANA timezone and saved user preference; optionally suggest `Africa/Algiers` through an explicit, editable Algeria-focused onboarding choice.
+- [x] Add automated locale fallback, direction and English/Arabic/French translation-key parity checks (`scripts/test-locale-utils.mjs`; 4 tests passed on 2026-10-28).
+- [ ] Add a documented manual review script for visual RTL, typography and mixed-script formatting.
 - [ ] Test on narrow mobile viewports and slower/unstable networks.
 
 **Exit gate:** critical onboarding and content-scheduling journeys pass in Arabic RTL and French; no silent content/timezone loss occurs.
