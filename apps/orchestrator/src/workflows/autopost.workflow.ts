@@ -2,9 +2,7 @@ import {
   continueAsNew,
   patched,
   proxyActivities,
-  condition,
-  defineSignal,
-  setHandler,
+  sleep,
   workflowInfo,
 } from '@temporalio/workflow';
 import { AutopostActivity } from '@gitroom/orchestrator/activities/autopost.activity';
