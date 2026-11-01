@@ -58,7 +58,7 @@ The post dispatcher no longer terminates the previously running execution and no
 **Priority:** P1 — automation reliability  
 **Status:** SOURCE MITIGATION COMMITTED; FOUR HELPER TESTS PASS LOCALLY; SERVICE/WORKER INTEGRATION OPEN.
 
-`AutopostService.processCron()` now checks the Temporal client instead of relying on optional chaining. Start and stop errors produce structured Logger/Sentry events with organization, autopost and workflow IDs, without embedding feed content or credentials. Create/update, active-toggle and delete responses include a `workflowDispatch` status: `started_or_reused`, `stop_requested`, or `unconfirmed`.
+`AutopostService.processCron()` now checks the Temporal client instead of relying on optional chaining. Activation uses Temporal `signalWithStart` with `USE_EXISTING` and an `activate` signal; deactivation sends `stop`, and a missing execution is reported as `not_running`. Errors produce structured Logger/Sentry events with organization, autopost and workflow IDs, without embedding feed content or credentials. Create/update, active-toggle and delete responses include a `workflowDispatch` status: `started_or_reused`, `stop_requested`, or `unconfirmed`.
 
 The decision/result contract is isolated in `autopost.workflow.dispatch.ts`. Five standalone tests pass locally on Node `v22.16.0`, covering activation, deactivation, and failure reporting for both paths.
 
