@@ -150,9 +150,10 @@ export class AutopostService {
         await client.workflow.signalWithStart('autoPostWorkflow', {
           workflowId: `autopost-${id}`,
           taskQueue: 'main',
-          args: [{ id, immediately: true }],
-          // Keep a running workflow; it reads the latest autopost settings on each run.
+          args: [{ id, immediately: false }],
+          // Atomically create/reuse the workflow and wake its hourly loop.
           workflowIdConflictPolicy: 'USE_EXISTING',
+          signal: 'activate',
           typedSearchAttributes: new TypedSearchAttributes([
             {
               key: organizationId,
