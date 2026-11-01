@@ -41,7 +41,8 @@
     "test:localization": "node --experimental-strip-types --test scripts/test-locale-utils.mjs",
     "test:url-safety": "node --experimental-strip-types --test scripts/test-safe-public-fetch.mjs",
     "test:tenant-safety": "node --experimental-strip-types --test scripts/test-post-ownership-safety.mjs",
-    "test:post-workflow-dispatch": "node --experimental-strip-types --test scripts/test-post-workflow-dispatch.mjs"
+    "test:post-workflow-dispatch": "node --experimental-strip-types --test scripts/test-post-workflow-dispatch.mjs",
+    "test:post-schedule-wait": "node --experimental-strip-types --test scripts/test-post-schedule-wait.mjs"
   },
   "dependencies": {
     "@ag-ui/mastra": "^1.1.4",
