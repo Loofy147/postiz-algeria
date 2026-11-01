@@ -136,7 +136,7 @@ Do not add a second capability subsystem until the existing adapter/settings mod
 - [x] Return `workflowDispatch` values from create/update, active-toggle and delete operations.
 - [x] Isolate the dispatch result contract and add five standalone tests for activation, deactivation, missing workflow and failure handling; tests pass locally on Node `v22.16.0`.
 - [ ] Add AutopostService tests with a mocked Temporal client and verify response behavior.
-- [ ] Confirm the semantics of `terminateWorkflow()` when no execution exists and when termination is requested while work is in flight.
+- [ ] Verify that `stop_requested` and `not_running` API statuses match the Temporal signal result, including a legacy history and an activity already in flight.
 - [ ] Verify worker-restart recovery for active Autopost records.
 - [ ] Resolve the separate entitlement-policy question in PUB-AUTH-01.
 
