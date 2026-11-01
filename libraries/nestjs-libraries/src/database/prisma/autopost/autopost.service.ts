@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { AutopostDto } from '@gitroom/nestjs-libraries/dtos/autopost/autopost.dto';
 import dayjs from 'dayjs';
@@ -17,6 +17,7 @@ import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/in
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
+import * as Sentry from '@sentry/nestjs';
 import {
   organizationId,
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
@@ -86,9 +87,13 @@ export class AutopostService {
       id
     );
 
-    await this.processCron(body.active, orgId, data.id);
+    const workflowDispatch = await this.processCron(
+      body.active,
+      orgId,
+      data.id
+    );
 
-    return data;
+    return { ...data, workflowDispatch: workflowDispatch.status };
   }
 
   async changeActive(orgId: string, id: string, active: boolean) {
@@ -97,45 +102,88 @@ export class AutopostService {
       id,
       active
     );
-    await this.processCron(active, orgId, id);
-    return data;
+    const workflowDispatch = await this.processCron(active, orgId, id);
+    return { ...data, workflowDispatch: workflowDispatch.status };
+  }
+
+  private reportAutopostWorkflowFailure(
+    err: unknown,
+    operation: 'start' | 'terminate',
+    orgId: string,
+    id: string
+  ) {
+    const error =
+      err instanceof Error
+        ? { name: err.name, message: err.message.slice(0, 500) }
+        : { name: 'UnknownError', message: 'A non-Error value was thrown' };
+    const context = {
+      component: 'autopost-workflow',
+      operation,
+      organizationId: orgId,
+      autopostId: id,
+      workflowId: `autopost-${id}`,
+      error,
+    };
+
+    Logger.error(JSON.stringify(context), undefined, 'AutopostService');
+    Sentry.captureException(err, {
+      tags: { component: 'autopost-workflow', operation },
+      extra: {
+        organizationId: orgId,
+        autopostId: id,
+        workflowId: `autopost-${id}`,
+      },
+    });
   }
 
   async processCron(active: boolean, orgId: string, id: string) {
+    const client = this._temporalService.client.getRawClient();
+    if (!client) {
+      const err = new Error('Temporal client is unavailable for autopost orchestration');
+      this.reportAutopostWorkflowFailure(
+        err,
+        active ? 'start' : 'terminate',
+        orgId,
+        id
+      );
+      return { status: 'unconfirmed' as const };
+    }
+
     if (active) {
       try {
-        return await this._temporalService.client
-          .getRawClient()
-          ?.workflow.start('autoPostWorkflow', {
-            workflowId: `autopost-${id}`,
-            taskQueue: 'main',
-            args: [{ id, immediately: true }],
-            // Keep a running workflow, it reads the autopost settings on every run
-            workflowIdConflictPolicy: 'USE_EXISTING',
-            typedSearchAttributes: new TypedSearchAttributes([
-              {
-                key: organizationId,
-                value: orgId,
-              },
-            ]),
-          });
+        await client.workflow.start('autoPostWorkflow', {
+          workflowId: `autopost-${id}`,
+          taskQueue: 'main',
+          args: [{ id, immediately: true }],
+          // Keep a running workflow; it reads the latest autopost settings on each run.
+          workflowIdConflictPolicy: 'USE_EXISTING',
+          typedSearchAttributes: new TypedSearchAttributes([
+            {
+              key: organizationId,
+              value: orgId,
+            },
+          ]),
+        });
+        return { status: 'started_or_reused' as const };
       } catch (err) {
-        // Don't fall through and terminate an active autopost
-        return false;
+        this.reportAutopostWorkflowFailure(err, 'start', orgId, id);
+        return { status: 'unconfirmed' as const };
       }
     }
 
     try {
-      return await this._temporalService.terminateWorkflow(`autopost-${id}`);
+      await this._temporalService.terminateWorkflow(`autopost-${id}`);
+      return { status: 'stop_requested' as const };
     } catch (err) {
-      return false;
+      this.reportAutopostWorkflowFailure(err, 'terminate', orgId, id);
+      return { status: 'unconfirmed' as const };
     }
   }
 
   async deleteAutopost(orgId: string, id: string) {
     const data = await this._autopostsRepository.deleteAutopost(orgId, id);
-    await this.processCron(false, orgId, id);
-    return data;
+    const workflowDispatch = await this.processCron(false, orgId, id);
+    return { ...data, workflowDispatch: workflowDispatch.status };
   }
 
   async loadXML(url: string) {
