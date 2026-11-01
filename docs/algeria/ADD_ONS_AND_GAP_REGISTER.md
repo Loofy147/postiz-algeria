@@ -108,7 +108,7 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 - [x] Make stop wake sleeping scheduled waits and delayed comment/follow-up waits; stop repeat-post child workflows even when they use `postNow=true`.
 - [x] Let an in-flight provider activity return and record its result, then skip subsequent comments, notifications, webhooks, plugs and repeat actions after stop/deletion is observed.
 - [x] Return deletion's `workflowSignal` as `not_required`, `signalled` or `unconfirmed`.
-- [x] Add seven dispatch-helper tests and six schedule-wait tests. The four Autopost dispatch tests also pass; combined local focused result is 17/17 on Node `v22.16.0`.
+- [x] Add seven dispatch-helper tests and six schedule-wait tests. The five Autopost dispatch tests also pass; combined local focused result is 18/18 on Node `v22.16.0`.
 - [x] Align the Volta Node version with the repository's `22.23.4` engine and CI pin.
 - [ ] Run suites and backend/full workspace build under Node `22.23.4` / pnpm `10.6.1` and obtain successful GitHub Actions evidence.
 - [ ] Add service/API and Temporal test-environment coverage for concurrent start, reschedule, draft, deletion, repeat-child stop and provider activity boundaries.
@@ -118,7 +118,7 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 
 **Residual boundary:** a `stop` signal cannot cancel a provider HTTP request already in flight or accepted remotely. The workflow preserves that request's outcome and prevents later actions once it observes the stop/deleted row, but a narrow final check-to-request race remains.
 
-**Current status:** `IMPLEMENTED_UNVERIFIED`. Source mitigations and 17 focused helper/state-machine tests exist, but Temporal integration, full CI/build, reconciliation and provider-side verification remain OPEN. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02) and [Second-pass Engineering Review](SECOND_PASS_REVIEW.md).
+**Current status:** `IMPLEMENTED_UNVERIFIED`. Source mitigations and 18 focused helper/state-machine tests exist, but Temporal integration, full CI/build, reconciliation and provider-side verification remain OPEN. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02) and [Second-pass Engineering Review](SECOND_PASS_REVIEW.md).
 
 ### GA-02 — Browser-level RTL and accessibility
 
