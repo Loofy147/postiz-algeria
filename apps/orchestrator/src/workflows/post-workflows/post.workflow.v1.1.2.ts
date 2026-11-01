@@ -157,6 +157,15 @@ export async function postWorkflowV112({
     poked = true;
   });
 
+  const waitForDelayOrStop = async (delayMs: number): Promise<boolean> => {
+    if (stopRequested) return false;
+    const stopped = await condition(
+      () => stopRequested,
+      Math.max(0, delayMs)
+    );
+    return !stopped && !stopRequested;
+  };
+
   // A reschedule or draft transition signals the existing workflow rather
   // than terminating it. Re-read the persisted post whenever that signal
   // arrives, so a sleeping workflow follows the latest date/state.
@@ -528,7 +537,10 @@ export async function postWorkflowV112({
           // then post the comments if any
         } else {
           if (postsList[i].delay) {
-            await sleep(60000 * Math.max(0, Number(postsList[i].delay ?? 0)));
+            const delayCompleted = await waitForDelayOrStop(
+              60000 * Math.max(0, Number(postsList[i].delay ?? 0))
+            );
+            if (!delayCompleted) return false;
           }
 
           // The main provider publish may have completed while a deletion was
@@ -747,8 +759,11 @@ export async function postWorkflowV112({
     // get the next to process
     const todo = list.shift();
 
-    // wait for the delay
-    await sleep(Math.max(0, Number(todo.delay ?? 0)));
+    // Wait for the delay, but let a graceful stop wake the workflow now.
+    const delayCompleted = await waitForDelayOrStop(
+      Math.max(0, Number(todo.delay ?? 0))
+    );
+    if (!delayCompleted) return false;
 
     // Do not start additional internal/global/repeat actions after deletion.
     if (stopRequested || !(await getPost(organizationId, postId))) {
