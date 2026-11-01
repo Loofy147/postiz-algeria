@@ -31,7 +31,7 @@ test('start callback errors return unconfirmed and report the operation', async 
   const result = await dispatchAutopostWorkflow({
     active: true,
     start: async () => { throw new Error('start unavailable'); },
-    stop: async () => undefined,
+    stop: async () => 'not_running',
     onFailure: (error, operation) => failures.push([error.message, operation]),
   });
   assert.deepEqual(result, { status: 'unconfirmed' });
