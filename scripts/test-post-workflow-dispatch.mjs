@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { dispatchPostWorkflow } from '../libraries/nestjs-libraries/src/database/prisma/posts/post-workflow.dispatch.ts';
 
-test('starts a queued workflow and signals it to refresh persisted schedule data', async () => {
+test('queued dispatch uses one atomic signal-with-start operation', async () => {
   const calls = [];
   const result = await dispatchPostWorkflow({
     state: 'QUEUE',
@@ -11,42 +11,35 @@ test('starts a queued workflow and signals it to refresh persisted schedule data
       calls.push('list');
       return [];
     },
-    startOrReuseWorkflow: async () => {
-      calls.push('start-or-reuse');
-      return 'workflow-handle';
+    signalWithStartWorkflow: async () => {
+      calls.push('signal-with-start');
     },
-    signalWorkflow: async (handle) => calls.push(['signal', handle]),
+    signalWorkflow: async (handle) => calls.push(['signal-existing', handle]),
   });
 
   assert.deepEqual(result, {
     status: 'started_or_reused',
     workflowId: 'post-1',
   });
-  assert.deepEqual(calls, [
-    'start-or-reuse',
-    ['signal', 'workflow-handle'],
-  ]);
+  assert.deepEqual(calls, ['signal-with-start']);
 });
 
-test('does not start a second workflow when a queued workflow already exists', async () => {
-  let starts = 0;
-  const calls = [];
+test('queued dispatch does not enumerate workflows before atomic signal-with-start', async () => {
+  let operations = 0;
   const result = await dispatchPostWorkflow({
     state: 'QUEUE',
     workflowId: 'post-2',
     findRunningWorkflows: async () => {
-      throw new Error('not used for queued posts');
+      throw new Error('queued dispatch must not perform a non-atomic preflight');
     },
-    startOrReuseWorkflow: async () => {
-      starts += 1;
-      return 'existing-or-new-handle';
+    signalWithStartWorkflow: async () => {
+      operations += 1;
     },
-    signalWorkflow: async (handle) => calls.push(handle),
+    signalWorkflow: async () => assert.fail('no separate signal is expected'),
   });
 
   assert.equal(result.status, 'started_or_reused');
-  assert.equal(starts, 1);
-  assert.deepEqual(calls, ['existing-or-new-handle']);
+  assert.equal(operations, 1);
 });
 
 test('signals every active workflow for a draft without starting another one', async () => {
@@ -56,9 +49,8 @@ test('signals every active workflow for a draft without starting another one', a
     state: 'DRAFT',
     workflowId: 'post-3',
     findRunningWorkflows: async () => ['workflow-a', 'workflow-b'],
-    startOrReuseWorkflow: async () => {
+    signalWithStartWorkflow: async () => {
       starts += 1;
-      return 'unexpected';
     },
     signalWorkflow: async (handle) => signals.push(handle),
   });
@@ -78,9 +70,8 @@ test('does not start a workflow for a draft with no active execution', async () 
     state: 'DRAFT',
     workflowId: 'post-4',
     findRunningWorkflows: async () => [],
-    startOrReuseWorkflow: async () => {
+    signalWithStartWorkflow: async () => {
       starts += 1;
-      return 'unexpected';
     },
     signalWorkflow: async () => assert.fail('no active workflow to signal'),
   });
@@ -93,7 +84,7 @@ test('does not start a workflow for a draft with no active execution', async () 
   assert.equal(starts, 0);
 });
 
-test('propagates workflow enumeration failures instead of claiming a draft transition', async () => {
+test('propagates workflow enumeration failures for draft transitions', async () => {
   await assert.rejects(
     dispatchPostWorkflow({
       state: 'DRAFT',
@@ -101,37 +92,39 @@ test('propagates workflow enumeration failures instead of claiming a draft trans
       findRunningWorkflows: async () => {
         throw new Error('Temporal list unavailable');
       },
-      startOrReuseWorkflow: async () => 'unexpected',
+      signalWithStartWorkflow: async () => undefined,
       signalWorkflow: async () => undefined,
     }),
     /Temporal list unavailable/
   );
 });
 
-test('propagates start and signal failures to the caller', async () => {
+test('propagates signal-with-start failure to the caller', async () => {
   await assert.rejects(
     dispatchPostWorkflow({
       state: 'QUEUE',
       workflowId: 'post-6',
       findRunningWorkflows: async () => [],
-      startOrReuseWorkflow: async () => {
-        throw new Error('Temporal start unavailable');
+      signalWithStartWorkflow: async () => {
+        throw new Error('Temporal signal-with-start unavailable');
       },
       signalWorkflow: async () => undefined,
     }),
-    /Temporal start unavailable/
+    /Temporal signal-with-start unavailable/
   );
+});
 
+test('propagates draft signal failure to the caller', async () => {
   await assert.rejects(
     dispatchPostWorkflow({
-      state: 'QUEUE',
+      state: 'DRAFT',
       workflowId: 'post-7',
-      findRunningWorkflows: async () => [],
-      startOrReuseWorkflow: async () => 'workflow-handle',
+      findRunningWorkflows: async () => ['workflow-a'],
+      signalWithStartWorkflow: async () => assert.fail('draft cannot start'),
       signalWorkflow: async () => {
-        throw new Error('Temporal signal unavailable');
+        throw new Error('Temporal draft signal unavailable');
       },
     }),
-    /Temporal signal unavailable/
+    /Temporal draft signal unavailable/
   );
 });
