@@ -174,9 +174,9 @@ export async function postWorkflowV112({
   // get all the posts and comments to post
   const firstPost = await getPost(organizationId, postId);
 
-  // in case doesn't exists for some reason, fail it
-  if (!firstPost) {
-    await changeState(postId, 'ERROR', 'No Post');
+  // A missing row can be a deliberate delete while this workflow was
+  // starting. Do not write ERROR onto a soft-deleted post.
+  if (!firstPost || stopRequested) {
     return;
   }
 
@@ -461,9 +461,11 @@ export async function postWorkflowV112({
   };
 
   const refreshBeforePublish = async (): Promise<boolean> => {
+    if (stopRequested) return false;
     if (postNow) return true;
 
     while (true) {
+      if (stopRequested) return false;
       const latest = await getPost(organizationId, postId);
       if (!latest || latest.state !== 'QUEUE') return false;
       if (!poked && !dayjs(latest.publishDate).isAfter(dayjs())) {
