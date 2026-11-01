@@ -1,6 +1,6 @@
 # Second-Pass Engineering Review — Postiz Algeria
 
-**Review date:** 2026-10-28  
+**Review date:** 2026-11-01  
 **Reviewed PR head:** `df6ba0f009720db8c2f8af1a5f42d39eb3b38cd5`  
 **Branch:** `feature/algeria-product-foundation`  
 **PR:** [#1](https://github.com/Loofy147/postiz-algeria/pull/1)  
