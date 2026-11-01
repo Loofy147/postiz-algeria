@@ -42,7 +42,8 @@
     "test:url-safety": "node --experimental-strip-types --test scripts/test-safe-public-fetch.mjs",
     "test:tenant-safety": "node --experimental-strip-types --test scripts/test-post-ownership-safety.mjs",
     "test:post-workflow-dispatch": "node --experimental-strip-types --test scripts/test-post-workflow-dispatch.mjs",
-    "test:post-schedule-wait": "node --experimental-strip-types --test scripts/test-post-schedule-wait.mjs"
+    "test:post-schedule-wait": "node --experimental-strip-types --test scripts/test-post-schedule-wait.mjs",
+    "test:autopost-dispatch": "node --experimental-strip-types --test scripts/test-autopost-workflow-dispatch.mjs"
   },
   "dependencies": {
     "@ag-ui/mastra": "^1.1.4",
