@@ -56,27 +56,29 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 
 ### PUB-REL-02 — Workflow dispatch and schedule reconciliation
 
-**Status:** Source mitigation and standalone state-machine tests committed; Temporal integration, API, CI and reconciliation proof remain OPEN.  
+**Status:** Source mitigations and standalone state-machine tests committed; Temporal integration, API, CI and reconciliation proof remain OPEN.  
 **Priority:** P1 reliability/operations.
 
-**Source finding:** the former implementation could return `false` after a workflow-list/termination failure, while some callers did not inspect that return value. It also used `TERMINATE_EXISTING` after a non-atomic list/terminate preflight, which could terminate an execution that appeared after the preflight and might be in an irreversible provider request.
+**Source finding:** the former implementation could return `false` after a workflow-list/termination failure, while some callers did not inspect that return value. It also used `TERMINATE_EXISTING` after a non-atomic list/terminate preflight, which could terminate an execution that appeared after the preflight and might be inside an irreversible provider request.
 
 **Changes applied in this branch:**
-- [x] Remove the queued-post path that enumerated and terminated existing executions before starting another.
-- [x] Use Temporal `USE_EXISTING` for queued posts, then signal the stable workflow ID with `poke`; a concurrent start therefore reuses the existing execution rather than terminating it.
+- [x] Replace the queued-post start-then-signal sequence with Temporal `signalWithStart`, using `USE_EXISTING`. The server atomically starts the stable workflow if absent or delivers `poke` to the existing execution.
 - [x] For a DRAFT transition, enumerate running executions and signal them without starting a new workflow.
-- [x] Make the workflow's scheduled wait respond to `poke`: reload the post, follow its current publish date, and exit if it is no longer queued or has been deleted.
+- [x] Make the scheduled workflow's wait respond to `poke`: reload the post, follow its current publish date, and exit if it is no longer queued or has been deleted.
 - [x] Re-read the post and refresh its pre-publish snapshot immediately before the first provider mutation when a scheduling signal is pending.
-- [x] Add explicit `workflowDispatch` response values to create, status-change and schedule-date operations; failures are logged and surfaced as `unconfirmed` instead of being represented as `false` or hidden by an empty catch.
-- [x] Add six dispatch-helper tests and five schedule-wait state-machine tests; both suites pass locally on Node `v22.16.0`.
+- [x] Return explicit `workflowDispatch` response values from create, status-change and schedule-date operations; failures are logged and surfaced as `unconfirmed`.
+- [x] For deletion, soft-delete first and signal the stable root execution plus other visible matching executions; do not terminate a workflow that may be inside a provider request.
+- [x] Return deletion's `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`. After an in-flight provider activity returns, the workflow checks for the deleted root and skips subsequent comments, webhooks and follow-up plug/repeat actions when the deletion is observed.
+- [x] Add seven dispatch-helper tests and five schedule-wait state-machine tests; both suites pass locally on Node `v22.16.0`.
+- [ ] Add service-level/API tests for dispatch and deletion response contracts and a Temporal test-environment suite for concurrent start, reschedule, draft and deletion.
+- [ ] Fault-inject deletion/schedule during an in-flight provider activity and prove the accepted external result is recorded without blind retry or subsequent side effects.
 - [ ] Run the new suites under pinned Node `22.23.4` / pnpm `10.6.1` and verify a successful GitHub Actions run.
-- [ ] Add service-level/API tests for the response contract and a Temporal test-environment suite for concurrent start, reschedule, draft and delete.
-- [ ] Fault-inject schedule/deletion during an in-flight provider activity and prove the accepted external result is recorded without blind retry.
 - [ ] Verify missing-workflow reconciliation and measure the hourly recovery delay; confirm Sentry telemetry delivery.
 
-**Residual boundary:** signaling cannot cancel an HTTP request that a social provider has already accepted. There remains a narrow check-to-provider-request race because the database does not yet enforce a durable publishing-attempt lease/CAS. The code now avoids terminating the active workflow, but this is not proof of exactly-once external publishing.
+**Residual boundary:** signaling cannot cancel an HTTP request already in flight or accepted by a social provider. A narrow check-to-provider-request race remains because the database does not yet enforce a durable publishing-attempt lease/CAS. Temporal visibility queries are eventually consistent; deletion therefore also targets the stable root workflow ID directly. This does not prove exactly-once external publishing.
 
 **Evidence paths:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [dispatch helper](../../libraries/nestjs-libraries/src/database/prisma/posts/post-workflow.dispatch.ts), [dispatch tests](../../scripts/test-post-workflow-dispatch.mjs), [workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [schedule wait helper](../../apps/orchestrator/src/workflows/post-workflows/post-schedule.wait.ts), [schedule wait tests](../../scripts/test-post-schedule-wait.mjs).
+
 
 ### PUB-CAP-01 — Provider support cannot yet be represented as one verified product promise
 
