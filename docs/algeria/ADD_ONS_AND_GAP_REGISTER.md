@@ -96,23 +96,29 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 
 ### GA-16 — Publishing workflow dispatch observability and reconciliation
 
-**Finding:** source inspection found empty catches around previous-workflow enumeration/termination and workflow startup. Scheduled post persistence can succeed even if Temporal dispatch does not.
+**Finding:** persisted posts and Temporal workflow dispatch can diverge. Earlier code could hide dispatch/listing failures or terminate an execution during an irreversible provider operation.
 
-**Change applied in this branch:**
-- [x] Report workflow list/termination errors through Sentry and a structured NestJS log record with safe context.
-- [x] Throw if the Temporal client is absent; do not silently treat optional-chain dispatch as a successful start.
-- [x] Replace queued-post termination and `TERMINATE_EXISTING` with Temporal `signalWithStart` using `USE_EXISTING`, atomically delivering `poke` to the stable workflow.
-- [x] Signal existing executions when a post becomes a draft; do not start a new workflow for a draft.
-- [x] Make the scheduled workflow re-read persisted state/date after a signal and refresh its snapshot before the first provider call.
-- [x] Return an explicit `workflowDispatch` status from create, status-change and schedule-date APIs; dispatch failures are surfaced as `unconfirmed`.
-- [x] Add seven dispatch-helper tests and five schedule-wait tests; both suites pass locally on Node `v22.16.0`.
+**Changes applied in this branch:**
+- [x] Report post workflow dispatch errors through Sentry and structured NestJS log records with safe context.
+- [x] Replace queued-post start-then-signal with Temporal `signalWithStart` + `USE_EXISTING`, atomically creating the stable workflow or delivering `poke` to the existing one.
+- [x] For draft transitions, signal existing executions without starting a new workflow.
+- [x] Make scheduled waits re-read persisted state/date after `poke` and refresh the snapshot before the first provider call.
+- [x] Return explicit `workflowDispatch` statuses from create, status-change and schedule-date APIs; failed dispatch returns `unconfirmed`.
+- [x] For deletion, signal root and visible child executions with a dedicated `stop` signal instead of terminating them.
+- [x] Make stop wake a sleeping scheduled workflow and stop repeat-post child workflows even when they use `postNow=true`.
+- [x] Let an in-flight provider activity return and record its result, then skip subsequent comments, notifications, webhooks, plugs and repeat actions after stop/deletion is observed.
+- [x] Return deletion's `workflowSignal` as `not_required`, `signalled` or `unconfirmed`.
+- [x] Add seven dispatch-helper tests and six schedule-wait tests. The four Autopost dispatch tests also pass; combined local focused result is 17/17 on Node `v22.16.0`.
 - [x] Align the Volta Node version with the repository's `22.23.4` engine and CI pin.
-- [ ] Run both suites and the backend/full workspace build under Node `22.23.4` / pnpm `10.6.1` and obtain successful CI evidence.
-- [ ] Add API/service and Temporal test-environment coverage for concurrent start, reschedule, draft/delete, and provider activity boundaries.
+- [ ] Run suites and backend/full workspace build under Node `22.23.4` / pnpm `10.6.1` and obtain successful GitHub Actions evidence.
+- [ ] Add service/API and Temporal test-environment coverage for concurrent start, reschedule, draft, deletion, repeat-child stop and provider activity boundaries.
 - [ ] Prove queued posts without a live workflow are safely reconciled; the existing sweep is hourly, so recovery delay must be measured.
 - [ ] Confirm Sentry telemetry delivery in a configured test environment.
+- [ ] Add a durable publishing lease/CAS if fault injection demonstrates the final database-check-to-provider-request race is unacceptable.
 
-**Current status:** `IMPLEMENTED_UNVERIFIED`. Source mitigations and 16 focused tests exist, but Temporal integration, full CI/build, reconciliation and provider-side verification remain OPEN. Signaling does not cancel a request already in flight at a provider. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02) and [Second-pass Engineering Review](SECOND_PASS_REVIEW.md).
+**Residual boundary:** a `stop` signal cannot cancel a provider HTTP request already in flight or accepted remotely. The workflow preserves that request's outcome and prevents later actions once it observes the stop/deleted row, but a narrow final check-to-request race remains.
+
+**Current status:** `IMPLEMENTED_UNVERIFIED`. Source mitigations and 17 focused helper/state-machine tests exist, but Temporal integration, full CI/build, reconciliation and provider-side verification remain OPEN. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02) and [Second-pass Engineering Review](SECOND_PASS_REVIEW.md).
 
 ### GA-02 — Browser-level RTL and accessibility
 
