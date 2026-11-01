@@ -473,6 +473,35 @@ export async function postWorkflowV112({
     return false;
   };
 
+  const refreshBeforePublish = async (): Promise<boolean> => {
+    if (postNow) return true;
+
+    while (true) {
+      const latest = await getPost(organizationId, postId);
+      if (!latest || latest.state !== 'QUEUE') return false;
+      if (!poked && !dayjs(latest.publishDate).isAfter(dayjs())) return true;
+
+      if (!(await waitUntilScheduled())) return false;
+
+      postsListBefore = await getPostsList(organizationId, postId);
+      const [refreshed] = postsListBefore;
+      if (!refreshed || refreshed.state !== 'QUEUE') return false;
+
+      post = refreshed;
+      const includeComments =
+        postsListBefore.length > 1 && (await isCommentable(post.integration));
+      postsList.splice(
+        0,
+        postsList.length,
+        ...(includeComments ? postsListBefore : [postsListBefore[0]])
+      );
+
+      const afterLoad = await getPost(organizationId, postId);
+      if (!afterLoad || afterLoad.state !== 'QUEUE') return false;
+      if (!poked && !dayjs(afterLoad.publishDate).isAfter(dayjs())) return true;
+    }
+  };
+
   // iterate over the posts
   for (let i = 0; i < postsList.length; i++) {
     const before = postsResults.length;
@@ -487,6 +516,8 @@ export async function postWorkflowV112({
       // status checks below must never be mistaken for never-started
       let heartbeats = false;
       try {
+        if (i === 0 && !(await refreshBeforePublish())) return false;
+
         // first post the main post
         if (i === 0) {
           heartbeats = true;
