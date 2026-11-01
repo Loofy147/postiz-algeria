@@ -5,6 +5,7 @@ import {
   startChild,
   proxyActivities,
   sleep,
+  condition,
   defineSignal,
   setHandler,
 } from '@temporalio/workflow';
@@ -149,6 +150,40 @@ export async function postWorkflowV112({
     poked = true;
   });
 
+  // A reschedule or draft transition signals the existing workflow rather
+  // than terminating it. Re-read the persisted post whenever that signal
+  // arrives, so a sleeping workflow follows the latest date/state.
+  const waitUntilScheduled = async (): Promise<boolean> => {
+    let scheduledPost = await getPost(organizationId, postId);
+
+    while (scheduledPost) {
+      if (scheduledPost.state !== 'QUEUE') {
+        return false;
+      }
+
+      if (poked) {
+        poked = false;
+        scheduledPost = await getPost(organizationId, postId);
+        continue;
+      }
+
+      const remainingMs = dayjs(scheduledPost.publishDate).diff(dayjs());
+      if (remainingMs <= 0) {
+        return true;
+      }
+
+      const wasPoked = await condition(() => poked, remainingMs);
+      if (!wasPoked) {
+        return true;
+      }
+
+      poked = false;
+      scheduledPost = await getPost(organizationId, postId);
+    }
+
+    return false;
+  };
+
   // get all the posts and comments to post
   const firstPost = await getPost(organizationId, postId);
 
@@ -158,18 +193,15 @@ export async function postWorkflowV112({
     return;
   }
 
+  // A draft or an already-published post is not a failed publish attempt.
+  // In particular, a draft signal must never overwrite DRAFT with ERROR.
   if (!postNow && firstPost.state !== 'QUEUE') {
-    await changeState(firstPost.id, 'ERROR', 'Already posted', [firstPost]);
     return;
   }
 
-  // wait for the scheduled publish date
-  if (!postNow) {
-    await sleep(
-      dayjs(firstPost.publishDate).isBefore(dayjs())
-        ? 0
-        : dayjs(firstPost.publishDate).diff(dayjs(), 'millisecond')
-    );
+  // Wait durably, but allow edits/reschedules to wake this workflow.
+  if (!postNow && !(await waitUntilScheduled())) {
+    return;
   }
 
   // Captured AFTER the scheduling sleep: the repeat-post delay is
@@ -179,12 +211,32 @@ export async function postWorkflowV112({
   // (a post scheduled further out than its interval repeated immediately).
   const startTime = new Date();
 
-  const postsListBefore = await getPostsList(organizationId, postId);
-  const [post] = postsListBefore;
+  let postsListBefore = await getPostsList(organizationId, postId);
+  let [post] = postsListBefore;
 
   if (!post) {
     await changeState(postId, 'ERROR', 'No Post');
     return;
+  }
+
+  // A signal may arrive while the post list is being loaded. Re-wait against
+  // the latest row before doing any provider preparation.
+  if (!postNow && (poked || post.state !== 'QUEUE' || dayjs(post.publishDate).isAfter(dayjs()))) {
+    if (!(await waitUntilScheduled())) {
+      return;
+    }
+
+    postsListBefore = await getPostsList(organizationId, postId);
+    [post] = postsListBefore;
+
+    if (!post) {
+      await changeState(postId, 'ERROR', 'No Post');
+      return;
+    }
+
+    if (post.state !== 'QUEUE') {
+      return;
+    }
   }
 
   // if refresh is needed from last time, let's inform the user
