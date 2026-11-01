@@ -120,6 +120,25 @@ Do not add a second capability subsystem until the existing adapter/settings mod
 
 **Source paths:** [PostsRepository](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts), [ownership guard/filter contract](../../libraries/nestjs-libraries/src/database/prisma/posts/post.ownership.filters.ts), [ownership tests](../../scripts/test-post-ownership-safety.mjs), [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [posts controller](../../apps/backend/src/api/routes/posts.controller.ts).
 
+### PUB-AUTO-01 — Autopost workflow dispatch needs explicit outcomes
+
+**Status:** Source mitigation and helper tests committed; service/Temporal runtime verification remains OPEN.  
+**Priority:** P1 reliability/operations.
+
+**Source finding:** the earlier `AutopostService.processCron()` used optional chaining for the Temporal client and swallowed start/termination exceptions. The API methods could return persisted Autopost records without distinguishing a confirmed workflow transition from an unavailable or failed Temporal operation.
+
+**Changes applied in this branch:**
+- [x] Require a Temporal client for activation/deactivation orchestration.
+- [x] Report failures through Logger and Sentry with organization, Autopost and workflow identifiers only.
+- [x] Return `workflowDispatch` values from create/update, active-toggle and delete operations.
+- [x] Isolate the dispatch result contract and add four standalone tests for activation, deactivation and failure handling; tests pass locally on Node `v22.16.0`.
+- [ ] Add AutopostService tests with a mocked Temporal client and verify response behavior.
+- [ ] Confirm the semantics of `terminateWorkflow()` when no execution exists and when termination is requested while work is in flight.
+- [ ] Verify worker-restart recovery for active Autopost records.
+- [ ] Resolve the separate entitlement-policy question in PUB-AUTH-01.
+
+**Evidence paths:** [AutopostService](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [dispatch helper](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.workflow.dispatch.ts), [dispatch tests](../../scripts/test-autopost-workflow-dispatch.mjs).
+
 ### PUB-AUTH-01 — Autopost entitlement behavior is inconsistent across mutations
 
 **Status:** OPEN; intended subscription semantics require confirmation against the product contract.  
