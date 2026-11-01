@@ -8,6 +8,7 @@ type WaitUntilPostScheduledOptions<Post extends ScheduledPost> = {
   isPoked: () => boolean;
   consumePoke: () => void;
   waitForPoke: (timeoutMs: number) => Promise<boolean>;
+  shouldStop?: () => boolean;
   now?: () => number;
 };
 
@@ -23,12 +24,13 @@ export async function waitUntilPostScheduled<Post extends ScheduledPost>({
   isPoked,
   consumePoke,
   waitForPoke,
+  shouldStop = () => false,
   now = Date.now,
 }: WaitUntilPostScheduledOptions<Post>): Promise<Post | null> {
   let post = await loadPost();
 
   while (post) {
-    if (post.state !== 'QUEUE') {
+    if (shouldStop() || post.state !== 'QUEUE') {
       return null;
     }
 
@@ -44,6 +46,9 @@ export async function waitUntilPostScheduled<Post extends ScheduledPost>({
     }
 
     const wasPoked = await waitForPoke(remainingMs);
+    if (shouldStop()) {
+      return null;
+    }
     if (!wasPoked) {
       return post;
     }
