@@ -134,11 +134,13 @@ Do not add a second capability subsystem until the existing adapter/settings mod
 - [x] Require a Temporal client for activation/deactivation orchestration.
 - [x] Report failures through Logger and Sentry with organization, Autopost and workflow identifiers only.
 - [x] Return `workflowDispatch` values from create/update, active-toggle and delete operations.
-- [x] Isolate the dispatch result contract and add four standalone tests for activation, deactivation and failure handling; tests pass locally on Node `v22.16.0`.
+- [x] Isolate the dispatch result contract and add five standalone tests for activation, deactivation, missing workflow and failure handling; tests pass locally on Node `v22.16.0`.
 - [ ] Add AutopostService tests with a mocked Temporal client and verify response behavior.
 - [ ] Confirm the semantics of `terminateWorkflow()` when no execution exists and when termination is requested while work is in flight.
 - [ ] Verify worker-restart recovery for active Autopost records.
 - [ ] Resolve the separate entitlement-policy question in PUB-AUTH-01.
+
+New activation uses `signalWithStart` with `USE_EXISTING` and an `activate` signal; deactivation sends `stop` and reports `not_running` when no execution exists. New histories use signal-driven waiting and exit after the current `autoPost` activity returns. A `patched('autopost-graceful-signals')` branch preserves the old sleep/continue-as-new command sequence for legacy histories, where a stop may wait for the current activity or hourly timer. The activity itself runs one LangGraph invocation across selected integrations and cannot be interrupted mid-flight by the workflow signal.
 
 **Evidence paths:** [AutopostService](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [dispatch helper](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.workflow.dispatch.ts), [dispatch tests](../../scripts/test-autopost-workflow-dispatch.mjs).
 
