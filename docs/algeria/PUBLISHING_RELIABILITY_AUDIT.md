@@ -1,6 +1,6 @@
-# Publishing Reliability Audit — Preliminary Source Review
+# Publishing Reliability Audit — Supplementary Source Review
 
-**Status:** Preliminary source audit; no provider-side publishing test has been performed by this document.
+**Status:** Dated supplementary evidence note. The canonical publishing audit is [PUBLISHING_AND_PROVIDER_AUDIT.md](PUBLISHING_AND_PROVIDER_AUDIT.md). No provider-side publishing test has been performed by this document.
 **Review date:** 2026-10-28
 **Branch:** `feature/algeria-product-foundation`
 **Purpose:** Map inherited behavior and prioritize evidence-producing tests before changing publishing architecture.
@@ -22,7 +22,7 @@
 | Post state model | `libraries/nestjs-libraries/src/database/prisma/schema.prisma` (`State`) | Persisted enum currently contains `QUEUE`, `PUBLISHED`, `ERROR`, and `DRAFT`; no distinct `UNKNOWN`/ambiguous-publication state is present in this enum. | FACT — schema; whether another durable reconciliation mechanism exists is OPEN |
 | State persistence | `libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts` (`changeState`, `updatePost`) | State update helpers write by post ID; `updatePost` marks a row `PUBLISHED` and stores the provider post ID/URL. | FACT — code present; all callers and their tenant/trust boundaries must be traced before classifying as a defect |
 | Workflow dispatch observability | `libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts` (`reportWorkflowDispatchFailure`, `startWorkflow`) | Dispatch errors are logged with operation, queue, post/org IDs and workflow ID, and sent to Sentry without post text/tokens in the structured context. | FACT — code present; alerting/retention configuration OPEN |
-| Delete and cancellation | `libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts` (`deletePost`); `.../posts/posts.repository.ts` (`deletePost`) | Delete marks the group deleted, then attempts to find/terminate running Temporal executions. Exceptions in this deletion cancellation path are swallowed. | FACT — exception handling visible; consequence and recovery behavior are OPEN |
+| Delete and cancellation | `libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts` (`deletePost`); `.../posts/posts.repository.ts` (`deletePost`) | Delete marks the group deleted, then attempts to enumerate/terminate running Temporal executions. Failures are reported through Logger/Sentry and the response distinguishes `not_required`, `requested`, and `unconfirmed`; this still does not reverse an in-flight provider request. | FACT — reporting/status contract present; fault-injection and provider-call boundary tests OPEN |
 | Provider token refresh | `libraries/nestjs-libraries/src/integrations/refresh.integration.service.ts` | Failed refresh marks refresh as needed and informs the user; successful refresh persists updated token data through the integration service. | FACT — code present; provider-specific expiry/revocation cases OPEN |
 | Provider exception contract | `libraries/nestjs-libraries/src/integrations/social.abstract.ts` | Defines typed failure cases including `RefreshToken`, `Disconnect`, `PublishedWithError`, and `BadBody`; documents pending-post status checks and finalization. | FACT — abstractions exist; actual provider implementations and workflow mapping OPEN |
 | Error persistence | `libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts` (`changeState`) | Error handling may persist serialized error details and a supplied body into the error table. | FACT — persistence path exists; confirm upstream sanitization and data retention/redaction before production use |
@@ -118,14 +118,11 @@ Additional source links:
 
 ## 3. Immediate implementation plan
 
-1. Add fault-injection tests around the existing `postWorkflowV112` and provider pending/finalization contracts; four representative provider adapters have now been inspected at source level.
-2. Test the new deletion cancellation result for Temporal unavailable, workflow-list failure, terminate failure, no active workflow, and successful terminate request.
-3. Continue tracing every caller of `changeState`, `updatePost`, `getPost`, and `getErrorsByPostIds`; fix only confirmed tenant-boundary gaps.
+1. Add Temporal test-environment coverage for the dispatch contract, concurrent start/reschedule, and a provider activity already in flight.
+2. Add failure-injection coverage for delete listing/termination and verify the `unconfirmed` result remains sticky across multiple executions.
+3. Trace every caller of `changeState`, `updatePost`, `getPost`, and `getErrorsByPostIds`; test cross-tenant API paths against two real organizations.
 4. Verify persisted provider error redaction and retention.
-2. Add tests for deletion/cancellation failure and dispatch concurrency using the repository's existing Temporal test approach.
-3. Trace all callers of `changeState`, `updatePost`, `getPost`, and `getErrorsByPostIds`; turn any confirmed authorization gap into a minimal fix plus regression test.
-4. Audit provider error redaction and add tests before changing log formats.
-5. Only after those results, decide whether a schema change or new reconciliation worker is necessary.
+5. Only after those results, decide whether a database-level publishing-attempt/lease or a durable reconciliation queue is necessary.
 
 ## 4. Not yet verified
 
