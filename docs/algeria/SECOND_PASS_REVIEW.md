@@ -62,6 +62,8 @@ The post dispatcher no longer terminates the previously running execution and no
 
 The decision/result contract is isolated in `autopost.workflow.dispatch.ts`. Five standalone tests pass locally on Node `v22.16.0`, covering activation, deactivation, and failure reporting for both paths.
 
+New histories use signal-driven waiting and exit after the current `autoPost` activity returns. `patched('autopost-graceful-signals')` preserves the original timer/continue-as-new path for older histories; a legacy stop may therefore wait for the current activity or hourly timer. `AutopostActivity.autoPost()` is one activity that can run a LangGraph job across multiple integrations, so a stop signal cannot interrupt its internal provider work midway.
+
 **Remaining gates**
 - [ ] Add service-level tests for missing Temporal client, stable workflow ID, and Sentry context.
 - [ ] Verify `signalWithStart`/`activate`/`stop` behavior in the Temporal test environment, including legacy histories and continue-as-new.
