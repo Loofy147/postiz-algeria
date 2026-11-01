@@ -511,6 +511,9 @@ export async function postWorkflowV112({
       // status checks below must never be mistaken for never-started
       let heartbeats = false;
       try {
+        if (stopRequested || !(await getPost(organizationId, postId))) {
+          return false;
+        }
         if (i === 0 && !(await refreshBeforePublish())) return false;
 
         // first post the main post
@@ -531,7 +534,7 @@ export async function postWorkflowV112({
           // The main provider publish may have completed while a deletion was
           // requested. Preserve its recorded outcome, but do not send any more
           // comments after the root post has been soft-deleted.
-          if (!postNow && !(await getPost(organizationId, postId))) {
+          if (stopRequested || !(await getPost(organizationId, postId))) {
             return false;
           }
 
@@ -582,6 +585,12 @@ export async function postWorkflowV112({
           postsResults[i].releaseURL
         );
         updated = true;
+
+        // Preserve the accepted provider result, then stop without emitting
+        // notifications or starting subsequent work after a graceful stop.
+        if (stopRequested || !(await getPost(organizationId, postId))) {
+          return false;
+        }
 
         if (i === 0) {
           // send notification on a sucessful post
