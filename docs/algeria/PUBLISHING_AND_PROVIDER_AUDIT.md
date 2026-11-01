@@ -54,29 +54,29 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 - [ ] Record residual duplication risk for providers that cannot reconcile a timed-out create operation.
 - [ ] Prove cancellation/rescheduling cannot leave two active workflows for one post.
 
-### PUB-REL-02 — Workflow startup failures need observable dispatch and recovery
+### PUB-REL-02 — Workflow dispatch and schedule reconciliation
 
-**Status:** Dispatch-error reporting implemented in source; operational telemetry and reconciliation tests remain OPEN.  
+**Status:** Source mitigation and standalone state-machine tests committed; Temporal integration, API, CI and reconciliation proof remain OPEN.  
 **Priority:** P1 reliability/operations.
 
-**Source finding:** `PostsService.startWorkflow()` previously swallowed failures while listing/terminating prior workflows and starting `postWorkflowV112`; its callers also had empty catches. A database post could remain queued without an immediate signal that workflow dispatch failed.
+**Source finding:** the former implementation could return `false` after a workflow-list/termination failure, while some callers did not inspect that return value. It also used `TERMINATE_EXISTING` after a non-atomic list/terminate preflight, which could terminate an execution that appeared after the preflight and might be in an irreversible provider request.
 
-**Change applied in this branch:**
-- [x] A missing Temporal client now raises an explicit error rather than returning apparent success through optional chaining.
-- [x] Failures while listing or terminating previous executions are reported through Sentry and the NestJS logger with operation, post ID, organization ID, task queue, and workflow ID context.
-- [x] If running executions cannot be listed or an existing execution cannot be terminated, dispatch fails closed rather than starting with `TERMINATE_EXISTING` and potentially interrupting an active publish.
-- [x] Workflow-start errors propagate to each caller; callers report them through the same non-content, non-credential context.
-- [x] Error telemetry avoids post text, access tokens, and refresh tokens.
-- [x] Backend TypeScript check passes on local checkout commit `84aee2296bfae7a8f543313a6b0374fdee2fc344` with `NODE_OPTIONS=--max-old-space-size=3072` (zero diagnostics, exit 0); Node is 22.22.1 rather than pinned 22.23.4.
-- [x] Backend production build `corepack pnpm --filter ./apps/backend run build`: PASS (exit 0) at checkout commit `84aee2296bfae7a8f543313a6b0374fdee2fc344` using Node 22.22.1 / pnpm 10.6.1.
-- [ ] Repeat the backend production build under pinned Node 22.23.4; full workspace CI/build remains OPEN.
-- [ ] Add a reconciliation test proving queued posts with no live workflow are detected and safely restarted.
-- [ ] Measure dispatch failures and queued-post age; confirm Sentry telemetry arrives in an enabled test environment.
-- [ ] Define the user-visible behavior when dispatch is unavailable; do not claim an actively running workflow unless durable handoff or reconciliation is evidenced.
+**Changes applied in this branch:**
+- [x] Remove the queued-post path that enumerated and terminated existing executions before starting another.
+- [x] Use Temporal `USE_EXISTING` for queued posts, then signal the stable workflow ID with `poke`; a concurrent start therefore reuses the existing execution rather than terminating it.
+- [x] For a DRAFT transition, enumerate running executions and signal them without starting a new workflow.
+- [x] Make the workflow's scheduled wait respond to `poke`: reload the post, follow its current publish date, and exit if it is no longer queued or has been deleted.
+- [x] Re-read the post and refresh its pre-publish snapshot immediately before the first provider mutation when a scheduling signal is pending.
+- [x] Add explicit `workflowDispatch` response values to create, status-change and schedule-date operations; failures are logged and surfaced as `unconfirmed` instead of being represented as `false` or hidden by an empty catch.
+- [x] Add six dispatch-helper tests and five schedule-wait state-machine tests; both suites pass locally on Node `v22.16.0`.
+- [ ] Run the new suites under pinned Node `22.23.4` / pnpm `10.6.1` and verify a successful GitHub Actions run.
+- [ ] Add service-level/API tests for the response contract and a Temporal test-environment suite for concurrent start, reschedule, draft and delete.
+- [ ] Fault-inject schedule/deletion during an in-flight provider activity and prove the accepted external result is recorded without blind retry.
+- [ ] Verify missing-workflow reconciliation and measure the hourly recovery delay; confirm Sentry telemetry delivery.
 
-The existing missing-post sweep runs on an hourly cadence and is a recovery path; it is not immediate dispatch confirmation. A failed inspection/termination now returns without starting a replacement workflow; the post must be reconciled by the recovery process.
+**Residual boundary:** signaling cannot cancel an HTTP request that a social provider has already accepted. There remains a narrow check-to-provider-request race because the database does not yet enforce a durable publishing-attempt lease/CAS. The code now avoids terminating the active workflow, but this is not proof of exactly-once external publishing.
 
-**Source paths:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [missing-post workflow](../../apps/orchestrator/src/workflows/missing.post.workflow.ts), [post activity recovery](../../apps/orchestrator/src/activities/post.activity.ts).
+**Evidence paths:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [dispatch helper](../../libraries/nestjs-libraries/src/database/prisma/posts/post-workflow.dispatch.ts), [dispatch tests](../../scripts/test-post-workflow-dispatch.mjs), [workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [schedule wait helper](../../apps/orchestrator/src/workflows/post-workflows/post-schedule.wait.ts), [schedule wait tests](../../scripts/test-post-schedule-wait.mjs).
 
 ### PUB-CAP-01 — Provider support cannot yet be represented as one verified product promise
 
@@ -137,11 +137,11 @@ The global `PoliciesGuard` returns `true` when a route has no `@CheckPolicies` m
 
 ## Next execution order
 
-1. Confirm the new safe-fetch code and regression suite under pinned Node.js `22.23.4` / pnpm `10.6.1`.
-2. Add deterministic redirect and payload-bound tests; preserve the default SSRF protection.
-3. Fix workflow-start observability and prove missing-workflow reconciliation.
-4. Build the dated provider capability evidence matrix for launch-priority channels. Do not audit all inherited channels to the same depth before agreeing which channels are in the first release.
-5. Run tenant isolation and entitlement tests against a real test database.
+1. Add Temporal test-environment/API coverage for dispatch, concurrent schedule changes, draft/delete transitions and provider-call fault injection.
+2. Add Autopost failure-path tests and confirm the semantics of stop requests and subscription policy.
+3. Confirm the SSRF production wrapper/validator/dispatcher under pinned Node.js `22.23.4` / pnpm `10.6.1` in CI.
+4. Build the dated provider capability evidence matrix for launch-priority channels.
+5. Run tenant isolation and entitlement tests against a real test database, then trace error redaction/retention.
 
 ## Release gate
 
