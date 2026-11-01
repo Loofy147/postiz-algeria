@@ -18,7 +18,6 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
 import * as Sentry from '@sentry/nestjs';
-import { WorkflowNotFoundError } from '@temporalio/client';
 import { dispatchAutopostWorkflow } from './autopost.workflow.dispatch';
 import {
   organizationId,
@@ -147,13 +146,12 @@ export class AutopostService {
           throw new Error('Temporal client is unavailable for autopost activation');
         }
 
-        await client.workflow.signalWithStart('autoPostWorkflow', {
+        await client.workflow.start('autoPostWorkflow', {
           workflowId: `autopost-${id}`,
           taskQueue: 'main',
-          args: [{ id, immediately: false }],
-          // Atomically create/reuse the workflow and wake its hourly loop.
+          args: [{ id, immediately: true }],
+          // Keep a running workflow; it reads the latest autopost settings on each run.
           workflowIdConflictPolicy: 'USE_EXISTING',
-          signal: 'activate',
           typedSearchAttributes: new TypedSearchAttributes([
             {
               key: organizationId,
@@ -163,20 +161,10 @@ export class AutopostService {
         });
       },
       stop: async () => {
-        const client = this._temporalService.client.getRawClient();
-        if (!client) {
+        if (!this._temporalService.client.getRawClient()) {
           throw new Error('Temporal client is unavailable for autopost deactivation');
         }
-
-        try {
-          await client.workflow.getHandle(`autopost-${id}`).signal('stop');
-          return 'stop_requested' as const;
-        } catch (err) {
-          if (err instanceof WorkflowNotFoundError) {
-            return 'not_running' as const;
-          }
-          throw err;
-        }
+        await this._temporalService.terminateWorkflow(`autopost-${id}`);
       },
       onFailure: (err, operation) =>
         this.reportAutopostWorkflowFailure(err, operation, orgId, id),
