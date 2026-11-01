@@ -57,7 +57,7 @@ Additional source links:
 - [x] Add the stable root workflow ID directly to the signal targets; do not depend only on an eventually consistent visibility query.
 - [x] Send a dedicated `stop` signal rather than terminating a workflow that may be inside a provider request.
 - [x] Register the stop signal in root and repeat-post child workflows, including children using `postNow=true`.
-- [x] Wake a scheduled wait on stop, preserve an in-flight provider result, and stop before later comments, notifications, webhooks, plugs or repeat actions once the workflow observes stop/deletion.
+- [x] Wake scheduled waits and delayed comment/follow-up waits on stop, preserve an in-flight provider result, and stop before later comments, notifications, webhooks, plugs or repeat actions once the workflow observes stop/deletion.
 - [x] Return `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`; this is a workflow signal result, not proof of provider-side cancellation.
 
 **Residual risk to verify:** a provider request already in flight may still complete after the user deletes the post. The workflow preserves the result and stops later actions when it observes stop/deletion, but a narrow race remains between the last database check and a new external provider request. The visibility query is eventually consistent; directly signalling the stable root mitigates this, and the child-stop signal should be verified in Temporal integration tests.
