@@ -22,7 +22,7 @@
 | Post state model | `libraries/nestjs-libraries/src/database/prisma/schema.prisma` (`State`) | Persisted enum currently contains `QUEUE`, `PUBLISHED`, `ERROR`, and `DRAFT`; no distinct `UNKNOWN`/ambiguous-publication state is present in this enum. | FACT — schema; whether another durable reconciliation mechanism exists is OPEN |
 | State persistence | `libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts` (`changeState`, `updatePost`) | State update helpers write by post ID; `updatePost` marks a row `PUBLISHED` and stores the provider post ID/URL. | FACT — code present; all callers and their tenant/trust boundaries must be traced before classifying as a defect |
 | Workflow dispatch observability | `libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts` (`reportWorkflowDispatchFailure`, `startWorkflow`) | Dispatch errors are logged with operation, queue, post/org IDs and workflow ID, and sent to Sentry without post text/tokens in the structured context. | FACT — code present; alerting/retention configuration OPEN |
-| Delete and workflow wake-up | `libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts` (`deletePost`); `apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts` | Delete marks the group deleted, then signals the stable root execution and visible matching executions with `poke`; the response distinguishes `not_required`, `signalled`, and `unconfirmed`. The workflow rechecks row existence before comments and downstream actions. | FACT — signal path present; Temporal/in-flight provider fault-injection tests OPEN |
+| Delete and graceful workflow stop | `libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts` (`deletePost`); `apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts` | Delete marks the group deleted, then sends `stop` to the stable root and visible matching executions. Root and repeat child workflows preserve an in-flight provider result, then stop before subsequent comments and downstream actions once stop/deletion is observed. | FACT — signal path present; Temporal/in-flight provider fault-injection tests OPEN |
 | Provider token refresh | `libraries/nestjs-libraries/src/integrations/refresh.integration.service.ts` | Failed refresh marks refresh as needed and informs the user; successful refresh persists updated token data through the integration service. | FACT — code present; provider-specific expiry/revocation cases OPEN |
 | Provider exception contract | `libraries/nestjs-libraries/src/integrations/social.abstract.ts` | Defines typed failure cases including `RefreshToken`, `Disconnect`, `PublishedWithError`, and `BadBody`; documents pending-post status checks and finalization. | FACT — abstractions exist; actual provider implementations and workflow mapping OPEN |
 | Error persistence | `libraries/nestjs-libraries/src/database/prisma/posts/posts.repository.ts` (`changeState`) | Error handling may persist serialized error details and a supplied body into the error table. | FACT — persistence path exists; confirm upstream sanitization and data retention/redaction before production use |
@@ -48,26 +48,27 @@ Additional source links:
 
 ## 2. Preliminary findings
 
-### PR-AUD-01 — Deletion must wake workflows without terminating provider work
+### PR-AUD-01 — Deletion must request graceful stop without terminating provider work
 
 **Initial evidence:** the former `PostsService.deletePost` caught and ignored errors around listing and terminating Temporal workflows. The database group was marked deleted before cancellation was attempted.
 
 **Changes now committed to this branch:**
 - [x] Report workflow list/signal failures through the existing structured Logger/Sentry helper.
 - [x] Add the stable root workflow ID directly to the signal targets; do not depend only on an eventually consistent visibility query.
-- [x] Signal `poke` instead of terminating a workflow that may be inside a provider request.
-- [x] Return `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`, not a claim that remote publication was cancelled.
-- [x] After a provider activity returns, recheck that the root post still exists before sending later comments, webhooks or follow-up plug/repeat actions.
+- [x] Send a dedicated `stop` signal rather than terminating a workflow that may be inside a provider request.
+- [x] Register the stop signal in root and repeat-post child workflows, including children using `postNow=true`.
+- [x] Wake a scheduled wait on stop, preserve an in-flight provider result, and stop before later comments, notifications, webhooks, plugs or repeat actions once the workflow observes stop/deletion.
+- [x] Return `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`; this is a workflow signal result, not proof of provider-side cancellation.
 
-**Residual risk to verify:** a provider request already in flight may still complete after the user deletes the post. The workflow now preserves that outcome and stops subsequent actions where it observes the deleted row, but a narrow race remains between the last existence check and a new external provider request. The visibility query is eventually consistent; directly signalling the stable root mitigates, but does not replace, Temporal integration tests.
+**Residual risk to verify:** a provider request already in flight may still complete after the user deletes the post. The workflow preserves the result and stops later actions when it observes stop/deletion, but a narrow race remains between the last database check and a new external provider request. The visibility query is eventually consistent; directly signalling the stable root mitigates this, and the child-stop signal should be verified in Temporal integration tests.
 
 **Required checks:**
-- Inject Temporal client unavailable, visibility-list failure, root workflow missing, multiple active executions and signal failure.
-- Inject deletion while a main provider request is in flight; verify the provider result is recorded and no later comments/follow-up actions run.
-- Confirm the frontend presents `signalled` as a workflow wake-up, not proof that a provider-side effect was undone.
+- Inject Temporal client unavailable, visibility-list failure, root workflow missing, multiple active root/child executions and signal failure.
+- Inject deletion while main publish/comment activity is in flight; verify provider result recording, then no subsequent external actions.
+- Confirm the frontend presents `signalled` as a workflow stop request, not proof a provider-side effect was undone.
 - Decide whether a durable publish-attempt lease/CAS is necessary to close the final check-to-request race.
 
-**Acceptance:** deletion does not terminate an execution mid-provider request; workflow wake-up failures are visible as `unconfirmed`; accepted provider outcomes are retained; no subsequent external action begins after the workflow observes the deleted root.
+**Acceptance:** deletion does not terminate an execution mid-provider request; workflow stop failures are visible as `unconfirmed`; accepted provider outcomes are retained; no subsequent external action begins after the workflow observes stop/deleted root.
 
 **Status:** SOURCE MITIGATION COMMITTED; automated Temporal and in-flight provider tests remain OPEN.
 
