@@ -519,6 +519,13 @@ export async function postWorkflowV112({
             await sleep(60000 * Math.max(0, Number(postsList[i].delay ?? 0)));
           }
 
+          // The main provider publish may have completed while a deletion was
+          // requested. Preserve its recorded outcome, but do not send any more
+          // comments after the root post has been soft-deleted.
+          if (!postNow && !(await getPost(organizationId, postId))) {
+            return false;
+          }
+
           heartbeats = true;
           postsResults.push(
             ...(await postComment(
