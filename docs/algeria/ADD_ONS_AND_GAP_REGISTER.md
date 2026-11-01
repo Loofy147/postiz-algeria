@@ -112,7 +112,7 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 - [ ] Prove queued posts without a live workflow are safely reconciled; the existing sweep is hourly, so recovery delay must be measured.
 - [ ] Confirm Sentry telemetry delivery in a configured test environment.
 
-**Current status:** `IMPLEMENTED_UNVERIFIED`. Source mitigations and 11 focused tests exist, but Temporal integration, full CI/build, reconciliation and provider-side verification remain OPEN. Signaling does not cancel a request already in flight at a provider. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02) and [Second-pass Engineering Review](SECOND_PASS_REVIEW.md).
+**Current status:** `IMPLEMENTED_UNVERIFIED`. Source mitigations and 15 focused tests exist, but Temporal integration, full CI/build, reconciliation and provider-side verification remain OPEN. Signaling does not cancel a request already in flight at a provider. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02) and [Second-pass Engineering Review](SECOND_PASS_REVIEW.md).
 
 ### GA-02 — Browser-level RTL and accessibility
 
