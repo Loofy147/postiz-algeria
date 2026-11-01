@@ -111,6 +111,7 @@ const {
 });
 
 const poke = defineSignal('poke');
+const stopPost = defineSignal('stop');
 
 const iterate = Array.from({ length: 5 });
 
@@ -147,7 +148,12 @@ export async function postWorkflowV112({
   const { postSocialPending, finalizePost } = proxyMutationTaskQueue(taskQueue);
 
   let poked = false;
+  let stopRequested = false;
   setHandler(poke, () => {
+    poked = true;
+  });
+  setHandler(stopPost, () => {
+    stopRequested = true;
     poked = true;
   });
 
@@ -161,7 +167,8 @@ export async function postWorkflowV112({
       consumePoke: () => {
         poked = false;
       },
-      waitForPoke: (timeoutMs) => condition(() => poked, timeoutMs),
+      waitForPoke: (timeoutMs) => condition(() => poked || stopRequested, timeoutMs),
+      shouldStop: () => stopRequested,
     }));
 
   // get all the posts and comments to post
