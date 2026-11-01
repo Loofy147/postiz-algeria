@@ -60,11 +60,11 @@ The post dispatcher no longer terminates the previously running execution and no
 
 `AutopostService.processCron()` now checks the Temporal client instead of relying on optional chaining. Start and stop errors produce structured Logger/Sentry events with organization, autopost and workflow IDs, without embedding feed content or credentials. Create/update, active-toggle and delete responses include a `workflowDispatch` status: `started_or_reused`, `stop_requested`, or `unconfirmed`.
 
-The decision/result contract is isolated in `autopost.workflow.dispatch.ts`. Four standalone tests pass locally on Node `v22.16.0`, covering activation, deactivation, and failure reporting for both paths.
+The decision/result contract is isolated in `autopost.workflow.dispatch.ts`. Five standalone tests pass locally on Node `v22.16.0`, covering activation, deactivation, and failure reporting for both paths.
 
 **Remaining gates**
 - [ ] Add service-level tests for missing Temporal client, stable workflow ID, and Sentry context.
-- [ ] Confirm whether `terminateWorkflow()` distinguishes “no workflow existed” from “termination requested”; do not overstate `stop_requested`.
+- [ ] Verify `signalWithStart`/`activate`/`stop` behavior in the Temporal test environment, including legacy histories and continue-as-new.
 - [ ] Verify active-autopost recovery after a worker restart and deletion while a workflow is active.
 - [ ] Resolve whether subscription/role policy is intended to gate update, activate and deactivate as well as create.
 
