@@ -68,7 +68,7 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 - [x] Re-read the post and refresh its pre-publish snapshot immediately before the first provider mutation when a scheduling signal is pending.
 - [x] Return explicit `workflowDispatch` response values from create, status-change and schedule-date operations; failures are logged and surfaced as `unconfirmed`.
 - [x] For deletion, soft-delete first, then send a dedicated `stop` signal to the stable root execution and other visible matching executions; do not terminate a workflow that may be inside a provider request.
-- [x] The workflow stop handler wakes scheduled waits and applies to repeat-post child workflows (`postNow=true`) as well as the root.
+- [x] The workflow stop handler wakes scheduled waits and delayed comment/follow-up waits, and applies to repeat-post child workflows (`postNow=true`) as well as the root.
 - [x] Preserve an in-flight provider result, then stop before starting subsequent comments, notifications, webhooks, plugs or another repeat action when stop/deletion is observed.
 - [x] Return deletion's `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`.
 - [x] Add seven dispatch-helper tests, six schedule-wait tests and four Autopost-dispatch tests; combined 17/17 pass locally on Node `v22.16.0`.
