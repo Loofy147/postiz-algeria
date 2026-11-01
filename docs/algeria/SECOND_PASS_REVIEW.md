@@ -94,16 +94,21 @@ Root `package.json` declares Node `22.23.4` and pnpm `10.6.1`; the build workflo
 **Remaining gate:** run all tests and the full workspace build under exactly Node `22.23.4` / pnpm `10.6.1`. The local standalone tests in this follow-up used Node `22.16.0` and do not close this gate.
 
 **Evidence:** [package.json](../../package.json), [build workflow](../../.github/workflows/build.yml).
-### REVIEW-06 — Deletion cancellation failure status is now sticky
+### REVIEW-06 — Post deletion now signals workflows instead of terminating them
 
-**Priority:** P2 — edge-case status accuracy  
-**Status:** SOURCE MITIGATION COMMITTED; FAILURE-INJECTION TEST OPEN.
+**Priority:** P1 — publication integrity / data lifecycle  
+**Status:** SOURCE MITIGATION COMMITTED; TEMPORAL AND IN-FLIGHT FAILURE TESTS OPEN.
 
-The successful termination path now preserves an earlier `unconfirmed` result rather than overwriting it with `requested` when a later matching execution terminates successfully. This fixes the result-aggregation defect identified in the first review.
+The delete path now returns `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`. It signals the stable root workflow ID directly and also signals other running executions found by the Temporal visibility query. This avoids terminating an execution that may be waiting on an irreversible provider request. The scheduled workflow sees the soft-deleted row as missing and exits when it next evaluates state. If the main provider request was already underway, it is allowed to return so the outcome can be recorded; subsequent comments, webhooks, and follow-up plug/repeat actions check whether the root post still exists and stop after deletion.
 
-**Remaining gate:** add a test where one workflow termination fails and another succeeds. A termination request still does not prove that an external provider request already in flight was reversed.
+**Residual uncertainty:** the Temporal visibility query is eventually consistent, so the stable root handle is signalled separately. A race still exists if deletion lands after the final database existence check but before a provider request is sent. A request already accepted by the provider cannot be rolled back. The code does not claim exactly-once external effects.
 
-**Evidence:** [PostsService deletion path](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts).
+**Remaining gates**
+- [ ] Add tests for Temporal unavailable, visibility-list failure, root workflow not found, multiple running executions, signal failure and a provider activity already in flight.
+- [ ] Prove a provider-accepted publish is still recorded after deletion while later comments and downstream actions are skipped.
+- [ ] Add a durable publish lease/CAS if fault injection demonstrates the final check-to-request race is unacceptable.
+
+**Evidence:** [PostsService deletion path](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [post workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts).
 ### REVIEW-07 — Publishing audit documents disagree about current behavior
 **Priority:** P2 — audit correctness  
 **Status:** Confirmed documentation defect.
