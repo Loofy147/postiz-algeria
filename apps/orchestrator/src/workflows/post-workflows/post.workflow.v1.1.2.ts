@@ -688,7 +688,7 @@ export async function postWorkflowV112({
 
   // A delete signal may have arrived while a provider activity was running.
   // Keep the provider outcome recorded, but skip all remaining downstream work.
-  if (!postNow && !(await getPost(organizationId, postId))) {
+  if (stopRequested || !(await getPost(organizationId, postId))) {
     return false;
   }
 
@@ -699,7 +699,7 @@ export async function postWorkflowV112({
     post.integration.id
   );
 
-  if (!postNow && !(await getPost(organizationId, postId))) {
+  if (stopRequested || !(await getPost(organizationId, postId))) {
     return false;
   }
 
@@ -751,7 +751,7 @@ export async function postWorkflowV112({
     await sleep(Math.max(0, Number(todo.delay ?? 0)));
 
     // Do not start additional internal/global/repeat actions after deletion.
-    if (!postNow && !(await getPost(organizationId, postId))) {
+    if (stopRequested || !(await getPost(organizationId, postId))) {
       return false;
     }
 
