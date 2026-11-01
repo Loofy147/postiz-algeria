@@ -18,6 +18,7 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
 import * as Sentry from '@sentry/nestjs';
+import { dispatchAutopostWorkflow } from './autopost.workflow.dispatch';
 import {
   organizationId,
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
@@ -137,20 +138,14 @@ export class AutopostService {
   }
 
   async processCron(active: boolean, orgId: string, id: string) {
-    const client = this._temporalService.client.getRawClient();
-    if (!client) {
-      const err = new Error('Temporal client is unavailable for autopost orchestration');
-      this.reportAutopostWorkflowFailure(
-        err,
-        active ? 'start' : 'terminate',
-        orgId,
-        id
-      );
-      return { status: 'unconfirmed' as const };
-    }
+    return dispatchAutopostWorkflow({
+      active,
+      start: async () => {
+        const client = this._temporalService.client.getRawClient();
+        if (!client) {
+          throw new Error('Temporal client is unavailable for autopost activation');
+        }
 
-    if (active) {
-      try {
         await client.workflow.start('autoPostWorkflow', {
           workflowId: `autopost-${id}`,
           taskQueue: 'main',
@@ -164,20 +159,16 @@ export class AutopostService {
             },
           ]),
         });
-        return { status: 'started_or_reused' as const };
-      } catch (err) {
-        this.reportAutopostWorkflowFailure(err, 'start', orgId, id);
-        return { status: 'unconfirmed' as const };
-      }
-    }
-
-    try {
-      await this._temporalService.terminateWorkflow(`autopost-${id}`);
-      return { status: 'stop_requested' as const };
-    } catch (err) {
-      this.reportAutopostWorkflowFailure(err, 'terminate', orgId, id);
-      return { status: 'unconfirmed' as const };
-    }
+      },
+      stop: async () => {
+        if (!this._temporalService.client.getRawClient()) {
+          throw new Error('Temporal client is unavailable for autopost deactivation');
+        }
+        await this._temporalService.terminateWorkflow(`autopost-${id}`);
+      },
+      onFailure: (err, operation) =>
+        this.reportAutopostWorkflowFailure(err, operation, orgId, id),
+    });
   }
 
   async deleteAutopost(orgId: string, id: string) {
