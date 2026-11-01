@@ -19,24 +19,24 @@ type DispatchPostWorkflowOptions<WorkflowHandle> = {
   draftState?: string;
   workflowId: string;
   findRunningWorkflows: () => Promise<WorkflowHandle[]>;
-  startOrReuseWorkflow: () => Promise<WorkflowHandle>;
+  signalWithStartWorkflow: () => Promise<unknown>;
   signalWorkflow: (workflow: WorkflowHandle) => Promise<void>;
 };
 
 /**
- * Reconcile the workflow with the persisted post state without terminating an
- * execution that may be inside an irreversible provider request.
+ * Reconcile a post workflow without terminating an execution that may be
+ * inside an irreversible provider request.
  *
- * The start callback must use Temporal's USE_EXISTING conflict policy. The
- * signal callback must send the workflow's "poke" signal, which causes a
- * scheduled workflow to re-read its state and publish date.
+ * Queued posts use Temporal Signal-With-Start so start/reuse and the poke signal
+ * are one atomic server operation. Draft transitions only signal executions
+ * already known to be running and never create a workflow.
  */
 export async function dispatchPostWorkflow<WorkflowHandle>({
   state,
   draftState = 'DRAFT',
   workflowId,
   findRunningWorkflows,
-  startOrReuseWorkflow,
+  signalWithStartWorkflow,
   signalWorkflow,
 }: DispatchPostWorkflowOptions<WorkflowHandle>): Promise<PostWorkflowDispatchResult> {
   if (state === draftState) {
@@ -55,8 +55,6 @@ export async function dispatchPostWorkflow<WorkflowHandle>({
       : { status: 'draft', workflowId, activeWorkflows: 0 };
   }
 
-  const workflow = await startOrReuseWorkflow();
-  await signalWorkflow(workflow);
-
+  await signalWithStartWorkflow();
   return { status: 'started_or_reused', workflowId };
 }
