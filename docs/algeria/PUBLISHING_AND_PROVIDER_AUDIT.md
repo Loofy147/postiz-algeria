@@ -63,22 +63,23 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 
 **Changes applied in this branch:**
 - [x] Replace the queued-post start-then-signal sequence with Temporal `signalWithStart`, using `USE_EXISTING`. The server atomically starts the stable workflow if absent or delivers `poke` to the existing execution.
-- [x] For a DRAFT transition, enumerate running executions and signal them without starting a new workflow.
+- [x] For DRAFT transitions, enumerate running executions and signal them without starting a new workflow.
 - [x] Make the scheduled workflow's wait respond to `poke`: reload the post, follow its current publish date, and exit if it is no longer queued or has been deleted.
 - [x] Re-read the post and refresh its pre-publish snapshot immediately before the first provider mutation when a scheduling signal is pending.
 - [x] Return explicit `workflowDispatch` response values from create, status-change and schedule-date operations; failures are logged and surfaced as `unconfirmed`.
-- [x] For deletion, soft-delete first and signal the stable root execution plus other visible matching executions; do not terminate a workflow that may be inside a provider request.
-- [x] Return deletion's `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`. After an in-flight provider activity returns, the workflow checks for the deleted root and skips subsequent comments, webhooks and follow-up plug/repeat actions when the deletion is observed.
-- [x] Add seven dispatch-helper tests and five schedule-wait state-machine tests; both suites pass locally on Node `v22.16.0`.
-- [ ] Add service-level/API tests for dispatch and deletion response contracts and a Temporal test-environment suite for concurrent start, reschedule, draft and deletion.
+- [x] For deletion, soft-delete first, then send a dedicated `stop` signal to the stable root execution and other visible matching executions; do not terminate a workflow that may be inside a provider request.
+- [x] The workflow stop handler wakes scheduled waits and applies to repeat-post child workflows (`postNow=true`) as well as the root.
+- [x] Preserve an in-flight provider result, then stop before starting subsequent comments, notifications, webhooks, plugs or another repeat action when stop/deletion is observed.
+- [x] Return deletion's `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`.
+- [x] Add seven dispatch-helper tests, six schedule-wait tests and four Autopost-dispatch tests; combined 17/17 pass locally on Node `v22.16.0`.
+- [ ] Add service-level/API tests for dispatch and deletion response contracts and a Temporal test-environment suite for concurrent start, reschedule, draft, root stop and child stop.
 - [ ] Fault-inject deletion/schedule during an in-flight provider activity and prove the accepted external result is recorded without blind retry or subsequent side effects.
 - [ ] Run the new suites under pinned Node `22.23.4` / pnpm `10.6.1` and verify a successful GitHub Actions run.
 - [ ] Verify missing-workflow reconciliation and measure the hourly recovery delay; confirm Sentry telemetry delivery.
 
-**Residual boundary:** signaling cannot cancel an HTTP request already in flight or accepted by a social provider. A narrow check-to-provider-request race remains because the database does not yet enforce a durable publishing-attempt lease/CAS. Temporal visibility queries are eventually consistent; deletion therefore also targets the stable root workflow ID directly. This does not prove exactly-once external publishing.
+**Residual boundary:** a `stop` signal cannot cancel an HTTP request already in flight or accepted by a social provider. A narrow check-to-provider-request race remains because the database does not yet enforce a durable publishing-attempt lease/CAS. Temporal visibility queries are eventually consistent; deletion therefore also targets the stable root workflow ID directly. This does not prove exactly-once external publishing.
 
 **Evidence paths:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [dispatch helper](../../libraries/nestjs-libraries/src/database/prisma/posts/post-workflow.dispatch.ts), [dispatch tests](../../scripts/test-post-workflow-dispatch.mjs), [workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [schedule wait helper](../../apps/orchestrator/src/workflows/post-workflows/post-schedule.wait.ts), [schedule wait tests](../../scripts/test-post-schedule-wait.mjs).
-
 
 ### PUB-CAP-01 — Provider support cannot yet be represented as one verified product promise
 
