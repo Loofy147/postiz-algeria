@@ -899,58 +899,37 @@ export class PostsService {
     const post = await this._postRepository.deletePost(orgId, group);
 
     if (post?.id) {
-      // Deleting the database row/group is not proof that an in-flight provider
-      // request was cancelled. Report failures rather than silently telling the
-      // caller only that deletion completed.
-      let workflowCancellation: 'not_required' | 'requested' | 'unconfirmed' =
+      // Signal running workflows to reload the now-deleted row. Do not
+      // terminate an execution that may be inside an irreversible provider
+      // request; let that activity return so its result can still be recorded.
+      let workflowSignal: 'not_required' | 'signalled' | 'unconfirmed' =
         'not_required';
       const client = this._temporalService.client.getRawClient();
 
       if (!client) {
-        workflowCancellation = 'unconfirmed';
+        workflowSignal = 'unconfirmed';
         this.reportWorkflowDispatchFailure(
           new Error('Temporal client is unavailable during post deletion'),
-          'list-running',
+          'signal-running',
           'main',
           post.id,
           orgId
         );
       } else {
+        const workflowIds = new Set<string>([`post_${post.id}`]);
+
+        // Visibility queries are eventually consistent; also signal the stable
+        // root workflow ID directly so deletion does not depend solely on search.
         try {
           const workflows = client.workflow.list({
             query: `postId="${post.id}" AND ExecutionStatus="Running"`,
           });
 
           for await (const executionInfo of workflows) {
-            try {
-              const workflow =
-                await this._temporalService.client.getWorkflowHandle(
-                  executionInfo.workflowId
-                );
-              if (
-                workflow &&
-                (await workflow.describe()).status.name !== 'TERMINATED'
-              ) {
-                await workflow.terminate();
-                // Keep an earlier failure visible when multiple executions match.
-                if (workflowCancellation !== 'unconfirmed') {
-                  workflowCancellation = 'requested';
-                }
-              }
-            } catch (err) {
-              workflowCancellation = 'unconfirmed';
-              this.reportWorkflowDispatchFailure(
-                err,
-                'terminate-running',
-                'main',
-                post.id,
-                orgId,
-                executionInfo.workflowId
-              );
-            }
+            workflowIds.add(executionInfo.workflowId);
           }
         } catch (err) {
-          workflowCancellation = 'unconfirmed';
+          workflowSignal = 'unconfirmed';
           this.reportWorkflowDispatchFailure(
             err,
             'list-running',
@@ -959,9 +938,43 @@ export class PostsService {
             orgId
           );
         }
+
+        for (const workflowId of workflowIds) {
+          try {
+            const workflow =
+              await this._temporalService.client.getWorkflowHandle(workflowId);
+            if (!workflow) {
+              continue;
+            }
+
+            const status = (await workflow.describe()).status.name;
+            if (status === 'RUNNING') {
+              await workflow.signal('poke');
+              if (workflowSignal !== 'unconfirmed') {
+                workflowSignal = 'signalled';
+              }
+            }
+          } catch (err) {
+            // A missing stable root workflow is normal for a draft that never
+            // had a scheduled execution. Other errors remain unconfirmed.
+            if (err instanceof Error && err.name === 'WorkflowNotFoundError') {
+              continue;
+            }
+
+            workflowSignal = 'unconfirmed';
+            this.reportWorkflowDispatchFailure(
+              err,
+              'signal-running',
+              'main',
+              post.id,
+              orgId,
+              workflowId
+            );
+          }
+        }
       }
 
-      return { id: post.id, workflowCancellation };
+      return { id: post.id, workflowSignal };
     }
 
     return { error: true };
@@ -977,7 +990,7 @@ export class PostsService {
 
   private reportWorkflowDispatchFailure(
     err: unknown,
-    operation: 'list-running' | 'terminate-running' | 'start',
+    operation: 'list-running' | 'signal-running' | 'terminate-running' | 'start',
     taskQueue: string,
     postId: string,
     orgId: string,
