@@ -40,7 +40,8 @@
     "test": "jest --coverage --detectOpenHandles --reporters=default --reporters=jest-junit",
     "test:localization": "node --experimental-strip-types --test scripts/test-locale-utils.mjs",
     "test:url-safety": "node --experimental-strip-types --test scripts/test-safe-public-fetch.mjs",
-    "test:tenant-safety": "node --experimental-strip-types --test scripts/test-post-ownership-safety.mjs"
+    "test:tenant-safety": "node --experimental-strip-types --test scripts/test-post-ownership-safety.mjs",
+    "test:post-workflow-dispatch": "node --experimental-strip-types --test scripts/test-post-workflow-dispatch.mjs"
   },
   "dependencies": {
     "@ag-ui/mastra": "^1.1.4",
