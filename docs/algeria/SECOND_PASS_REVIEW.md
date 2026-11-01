@@ -25,7 +25,7 @@ The previous `false` return paths were removed from `PostsService.startWorkflow(
 
 The create-post, change-status, and schedule-date responses now expose a dispatch status, so a persisted post is no longer indistinguishable from one whose dispatch was confirmed. Draft/no-workflow cases are represented separately from stop requests.
 
-**Verification completed:** six standalone dispatch-helper regression tests pass locally on Node `v22.16.0`. They cover queue dispatch, reuse/signaling, draft with and without a running workflow, and list/start/signal failures.
+**Verification completed:** seven standalone dispatch-helper regression tests pass locally on Node `v22.16.0`. They cover queue dispatch, reuse/signaling, draft with and without a running workflow, and list/start/signal failures.
 
 **Remaining gates**
 - [ ] Add service-level tests proving the API response contract for create, status change and date change.
@@ -39,7 +39,7 @@ The create-post, change-status, and schedule-date responses now expose a dispatc
 **Priority:** P1 — publication integrity  
 **Status:** DESTRUCTIVE RESTART PATH REMOVED; SCHEDULE-WAIT REGRESSION TESTS PASS LOCALLY; FULL CONCURRENCY PROOF OPEN.
 
-The post dispatcher no longer terminates the previously running execution and no longer starts with `TERMINATE_EXISTING`. A queued post uses `USE_EXISTING`, then signals `poke`. A running scheduled workflow now uses Temporal `condition()` through a testable wait state machine, re-reads the post after a signal, and exits without changing a draft back to `ERROR`. Before the first provider mutation, it rechecks the latest queued state/date and refreshes the persisted post snapshot if a signal arrived.
+The post dispatcher no longer terminates the previously running execution and no longer starts with `TERMINATE_EXISTING`. A queued post now uses Temporal `signalWithStart` with `USE_EXISTING`, which atomically starts the stable workflow or signals the existing execution with `poke`. A running scheduled workflow now uses Temporal `condition()` through a testable wait state machine, re-reads the post after a signal, and exits without changing a draft back to `ERROR`. Before the first provider mutation, it rechecks the latest queued state/date and refreshes the persisted post snapshot if a signal arrived.
 
 **Verification completed:** five standalone schedule-wait tests pass locally on Node `v22.16.0`, covering due posts, a later reschedule, conversion to draft, an early signal, and deletion.
 
@@ -174,4 +174,4 @@ The autopost create route has `@CheckPolicies([AuthorizationActions.Create, Sect
 5. Consolidate the publishing audits and keep one authoritative status ledger.
 6. Run pinned-toolchain CI/full build, then browser RTL/accessibility tests and provider-approved publishing tests.
 
-**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 6 post-dispatch tests, 5 schedule-wait tests, and 4 Autopost-dispatch tests passed locally on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
+**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 7 post-dispatch tests, 5 schedule-wait tests, and 4 Autopost-dispatch tests passed locally on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
