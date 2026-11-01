@@ -6,7 +6,7 @@
 **PR:** [#1](https://github.com/Loofy147/postiz-algeria/pull/1)  
 **Review type:** Source/diff review with focused standalone helper tests. This is not a backend/full-workspace build, Temporal integration test, runtime penetration test or production-readiness certification.
 
-**Reviewed PR diff:** last fetched PR metadata showed 40 files changed (+3136/-154); recheck the live PR before merge.
+**Reviewed PR diff:** last fetched PR metadata showed 40 files changed (+3154/-157); recheck the live PR before merge.
 
 ## Executive verdict
 
