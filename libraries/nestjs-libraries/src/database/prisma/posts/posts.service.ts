@@ -1069,13 +1069,14 @@ export class PostsService {
 
         return runningWorkflows;
       },
-      startOrReuseWorkflow: () =>
-        client.workflow.start('postWorkflowV112', {
+      signalWithStartWorkflow: () =>
+        client.workflow.signalWithStart('postWorkflowV112', {
           workflowId,
           taskQueue: 'main',
-          // Never terminate an execution here: it may be inside a provider
-          // mutation whose external outcome cannot be rolled back.
+          // Atomically create or reuse the stable execution and deliver the
+          // signal. Never terminate an execution in a provider mutation.
           workflowIdConflictPolicy: 'USE_EXISTING',
+          signal: 'poke',
           args: [
             {
               taskQueue,
