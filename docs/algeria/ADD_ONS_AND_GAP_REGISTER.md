@@ -101,18 +101,18 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 **Change applied in this branch:**
 - [x] Report workflow list/termination errors through Sentry and a structured NestJS log record with safe context.
 - [x] Throw if the Temporal client is absent; do not silently treat optional-chain dispatch as a successful start.
-- [x] Replace queued-post termination and `TERMINATE_EXISTING` with `USE_EXISTING` plus a `poke` signal to the stable workflow ID.
+- [x] Replace queued-post termination and `TERMINATE_EXISTING` with Temporal `signalWithStart` using `USE_EXISTING`, atomically delivering `poke` to the stable workflow.
 - [x] Signal existing executions when a post becomes a draft; do not start a new workflow for a draft.
 - [x] Make the scheduled workflow re-read persisted state/date after a signal and refresh its snapshot before the first provider call.
 - [x] Return an explicit `workflowDispatch` status from create, status-change and schedule-date APIs; dispatch failures are surfaced as `unconfirmed`.
-- [x] Add six dispatch-helper tests and five schedule-wait tests; both suites pass locally on Node `v22.16.0`.
+- [x] Add seven dispatch-helper tests and five schedule-wait tests; both suites pass locally on Node `v22.16.0`.
 - [x] Align the Volta Node version with the repository's `22.23.4` engine and CI pin.
 - [ ] Run both suites and the backend/full workspace build under Node `22.23.4` / pnpm `10.6.1` and obtain successful CI evidence.
 - [ ] Add API/service and Temporal test-environment coverage for concurrent start, reschedule, draft/delete, and provider activity boundaries.
 - [ ] Prove queued posts without a live workflow are safely reconciled; the existing sweep is hourly, so recovery delay must be measured.
 - [ ] Confirm Sentry telemetry delivery in a configured test environment.
 
-**Current status:** `IMPLEMENTED_UNVERIFIED`. Source mitigations and 15 focused tests exist, but Temporal integration, full CI/build, reconciliation and provider-side verification remain OPEN. Signaling does not cancel a request already in flight at a provider. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02) and [Second-pass Engineering Review](SECOND_PASS_REVIEW.md).
+**Current status:** `IMPLEMENTED_UNVERIFIED`. Source mitigations and 16 focused tests exist, but Temporal integration, full CI/build, reconciliation and provider-side verification remain OPEN. Signaling does not cancel a request already in flight at a provider. See [Publishing Reliability and Provider Capability Audit](PUBLISHING_AND_PROVIDER_AUDIT.md#pub-rel-02) and [Second-pass Engineering Review](SECOND_PASS_REVIEW.md).
 
 ### GA-02 — Browser-level RTL and accessibility
 
