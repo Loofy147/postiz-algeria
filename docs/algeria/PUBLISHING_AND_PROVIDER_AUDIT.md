@@ -71,7 +71,7 @@ The current `post.workflow.v1.1.2.ts` separates read-only status checks from irr
 - [x] The workflow stop handler wakes scheduled waits and delayed comment/follow-up waits, and applies to repeat-post child workflows (`postNow=true`) as well as the root.
 - [x] Preserve an in-flight provider result, then stop before starting subsequent comments, notifications, webhooks, plugs or another repeat action when stop/deletion is observed.
 - [x] Return deletion's `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`.
-- [x] Add seven dispatch-helper tests, six schedule-wait tests and four Autopost-dispatch tests; combined 17/17 pass locally on Node `v22.16.0`.
+- [x] Add seven dispatch-helper tests, six schedule-wait tests and five Autopost-dispatch tests; combined 18/18 pass locally on Node `v22.16.0`.
 - [ ] Add service-level/API tests for dispatch and deletion response contracts and a Temporal test-environment suite for concurrent start, reschedule, draft, root stop and child stop.
 - [ ] Fault-inject deletion/schedule during an in-flight provider activity and prove the accepted external result is recorded without blind retry or subsequent side effects.
 - [ ] Run the new suites under pinned Node `22.23.4` / pnpm `10.6.1` and verify a successful GitHub Actions run.
