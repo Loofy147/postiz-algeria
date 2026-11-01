@@ -16,51 +16,55 @@ At the reviewed head, the PR is open and draft, with 32 changed files (+2266/-10
 
 ## Findings, ordered by risk
 
-### REVIEW-01 — Workflow dispatch failure can still be returned as success
+### REVIEW-01 — Workflow dispatch can be reported as success
+
 **Priority:** P1 — reliability / user-visible correctness  
-**Status:** Source-confirmed behavior; runtime impact not measured.
+**Status:** PARTIALLY ADDRESSED IN SOURCE; CI and API-level integration proof OPEN.
 
-In `PostsService.startWorkflow()`, the failed workflow-list and failed termination branches call the reporting helper and then `return false`. They do not throw. The callers in `createPost()`, `changePostStatus()`, and `changeDate()` handle rejected promises but do not consistently inspect a `false` result. For example, the status-change path can return `{ id, state }` after dispatch returned false. The post has already been persisted, but the API response does not reliably distinguish “saved but workflow not started” from success.
+The previous `false` return paths were removed from `PostsService.startWorkflow()`. Dispatch now uses a tested decision helper: queued posts start or reuse the stable Temporal workflow ID with `USE_EXISTING` and signal `poke`; draft transitions signal existing executions without starting another one. Missing-client, list, start, and signal errors are caught at the service boundary, logged to Sentry/Logger, and represented as `workflowDispatch: 'unconfirmed'`.
 
-This contradicts the broad wording in the gap register that dispatch errors are propagated to each caller. Logging/Sentry is useful, but does not repair the caller contract.
+The create-post, change-status, and schedule-date responses now expose a dispatch status, so a persisted post is no longer indistinguishable from one whose dispatch was confirmed. Draft/no-workflow cases are represented separately from stop requests.
 
-**Required change**
-- Make dispatch results explicit and mandatory to handle, preferably a typed result/exception distinguishing `started`, `draft-no-dispatch`, and `not-started`.
-- Ensure each caller reports a failure to the user/API or returns a documented pending/reconciliation state. Avoid duplicate Sentry events where the service and caller both report the same thrown error.
-- Add tests for missing Temporal client, workflow-list failure, prior-run termination failure, workflow-start failure, and a successful start. Assert the actual caller response as well as telemetry.
+**Verification completed:** six standalone dispatch-helper regression tests pass locally on Node `v22.16.0`. They cover queue dispatch, reuse/signaling, draft with and without a running workflow, and list/start/signal failures.
 
-**Evidence:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts) (`startWorkflow`, `createPost`, `changePostStatus`, `changeDate`); [gap register](ADD_ONS_AND_GAP_REGISTER.md#ga-16).
+**Remaining gates**
+- [ ] Add service-level tests proving the API response contract for create, status change and date change.
+- [ ] Verify actual Temporal client behavior for `USE_EXISTING` followed by signal, including the concurrent-start case.
+- [ ] Verify Sentry delivery and the hourly missing-workflow reconciliation path.
+- [ ] Run the tests and backend/full workspace build under pinned Node `22.23.4` / pnpm `10.6.1` in GitHub Actions.
 
-### REVIEW-02 — `TERMINATE_EXISTING` leaves a race after the “fail closed” check
+**Evidence:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [dispatch helper](../../libraries/nestjs-libraries/src/database/prisma/posts/post-workflow.dispatch.ts), [dispatch tests](../../scripts/test-post-workflow-dispatch.mjs), [CI workflow](../../.github/workflows/build.yml).
+### REVIEW-02 — Destructive workflow conflict handling replaced; in-flight mutation remains a boundary
+
 **Priority:** P1 — publication integrity  
-**Status:** Concurrency risk inferred from source; no duplicate publish is alleged.
+**Status:** DESTRUCTIVE RESTART PATH REMOVED; SCHEDULE-WAIT REGRESSION TESTS PASS LOCALLY; FULL CONCURRENCY PROOF OPEN.
 
-The service first lists and terminates running workflows for a post, then calls Temporal `workflow.start` with stable ID `post_<postId>` and `workflowIdConflictPolicy: 'TERMINATE_EXISTING'`. A concurrent request can start a workflow after the preflight enumeration but before this start. The conflict policy can then terminate that newly running workflow. The preflight protects only executions it actually observed; it is not an atomic lock.
+The post dispatcher no longer terminates the previously running execution and no longer starts with `TERMINATE_EXISTING`. A queued post uses `USE_EXISTING`, then signals `poke`. A running scheduled workflow now uses Temporal `condition()` through a testable wait state machine, re-reads the post after a signal, and exits without changing a draft back to `ERROR`. Before the first provider mutation, it rechecks the latest queued state/date and refreshes the persisted post snapshot if a signal arrived.
 
-This is particularly sensitive because the code's own comments correctly identify that terminating a workflow during an in-flight provider mutation can leave the external outcome ambiguous.
+**Verification completed:** five standalone schedule-wait tests pass locally on Node `v22.16.0`, covering due posts, a later reschedule, conversion to draft, an early signal, and deletion.
 
-**Required change**
-- Remove automatic termination as a last-moment conflict policy unless the provider workflow can prove it is safe.
-- Choose conflict behavior explicitly based on the desired semantics (e.g. fail on an unexpected conflict or attach to an existing execution), then implement a safe reschedule/restart protocol.
-- Add concurrent-start/reschedule/delete fault-injection tests that assert one active workflow per post and no blind republish.
+**Residual uncertainty:** signaling does not cancel an HTTP request already in flight at a social provider. There is also no database-level publishing lease/CAS that makes the final state check and provider call atomic. A narrow race remains between the last recheck and the irreversible remote request; the provider outcome must still be treated as potentially ambiguous. No duplicate publication is alleged.
 
-**Evidence:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts) (`startWorkflow`); [workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts).
+**Remaining gates**
+- [ ] Add Temporal test-environment coverage for two concurrent schedule changes and a start/start race.
+- [ ] Fault-inject a schedule/draft/delete request while the provider activity is in flight; verify the accepted outcome is recorded and no blind retry occurs.
+- [ ] Decide whether a database-level publishing-attempt/lease state is required to close the final check-to-request race.
 
-### REVIEW-03 — Autopost workflow failures are still swallowed
+**Evidence:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [schedule-wait helper](../../apps/orchestrator/src/workflows/post-workflows/post-schedule.wait.ts), [schedule-wait tests](../../scripts/test-post-schedule-wait.mjs).
+### REVIEW-03 — Autopost dispatch observability improved; tests remain OPEN
+
 **Priority:** P1 — automation reliability  
-**Status:** Source-confirmed behavior; product impact needs runtime verification.
+**Status:** SOURCE MITIGATION COMMITTED; AUTOMATED TESTS AND RUNTIME VERIFICATION OPEN.
 
-In `AutopostService.processCron()`, an absent Temporal client is hidden by optional chaining on `getRawClient()?.workflow.start(...)`, which resolves to `undefined`. Start and termination exceptions are caught and reduced to `false` without structured logging, Sentry reporting, or propagation. `createAutopost()`, `changeActive()`, and `deleteAutopost()` then return persisted data even when workflow orchestration failed. In particular, deletion/deactivation updates the database before termination is confirmed.
+`AutopostService.processCron()` now checks for a Temporal client instead of relying on optional chaining. Start and stop failures produce structured Logger/Sentry events with organization, autopost and workflow IDs, without embedding feed content or credentials. Create/update, active-toggle and delete responses now include a `workflowDispatch` status: `started_or_reused`, `stop_requested`, or `unconfirmed`.
 
-The improvements to the post workflow dispatch path have not been applied consistently to autopost orchestration.
+**Remaining gates**
+- [ ] Add tests for missing Temporal client, start failure, stop failure, repeated activation/deactivation, and deleted records with a still-running execution.
+- [ ] Confirm whether `terminateWorkflow()` distinguishes “no workflow existed” from “termination requested”; do not overstate `stop_requested`.
+- [ ] Verify the active autopost recovery mechanism after a worker restart.
+- [ ] Resolve whether subscription/role policy is intended to gate update, activate and deactivate as well as create.
 
-**Required change**
-- Use an explicit dispatch result/exception for absent client, failed start, and failed termination; preserve a useful operator event with safe context.
-- Do not return an unqualified success when a requested activation or cancellation was not confirmed.
-- Add tests for missing client, start failure, termination failure, idempotent repeated activation/deactivation, and recovery of active records without a running workflow.
-
-**Evidence:** [AutopostService](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts); [AutopostController](../../apps/backend/src/api/routes/autopost.controller.ts).
-
+**Evidence:** [AutopostService](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [AutopostController](../../apps/backend/src/api/routes/autopost.controller.ts).
 ### REVIEW-04 — SSRF tests bypass the production URL validator and dispatcher
 **Priority:** P1 — security verification gap  
 **Status:** Mitigation code is present; production gate remains unverified.
@@ -77,26 +81,26 @@ This is a test-coverage limitation, not evidence that the mitigation is broken.
 
 **Evidence:** [fetch wrapper](../../libraries/nestjs-libraries/src/dtos/webhooks/safe.public.https.fetch.ts), [fetch core](../../libraries/nestjs-libraries/src/dtos/webhooks/safe.public.https.fetch.core.mjs), [current core tests](../../scripts/test-safe-public-fetch.mjs), [autopost source](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts).
 
-### REVIEW-05 — Runtime pin mismatch: Volta still selects Node 20.17.0
+### REVIEW-05 — Runtime pins aligned; exact toolchain proof OPEN
+
 **Priority:** P2 — reproducibility  
-**Status:** Confirmed configuration inconsistency.
+**Status:** CONFIGURATION ALIGNED; PINNED-RUNTIME EXECUTION OPEN.
 
-Root `package.json` declares `engines.node = 22.23.4` and `packageManager = pnpm@10.6.1`; the GitHub Actions workflow now also pins Node 22.23.4 and pnpm 10.6.1. But `package.json` still has `volta.node = 20.17.0`. Developers using Volta may therefore get a different Node runtime from CI and the declared engine.
+Root `package.json` declares Node `22.23.4` and pnpm `10.6.1`; the build workflow uses those versions, and the Volta Node pin is now also `22.23.4`.
 
-**Required change:** update the Volta pin to 22.23.4 or remove it if intentionally unused; verify all documented local/CI commands under exactly Node 22.23.4 and pnpm 10.6.1. Do not close the gate based on runs under 22.22.1.
+**Remaining gate:** run all tests and the full workspace build under exactly Node `22.23.4` / pnpm `10.6.1`. The local standalone tests in this follow-up used Node `22.16.0` and do not close this gate.
 
 **Evidence:** [package.json](../../package.json), [build workflow](../../.github/workflows/build.yml).
+### REVIEW-06 — Deletion cancellation failure status is now sticky
 
-### REVIEW-06 — Deletion cancellation status can be overwritten after a failure
-**Priority:** P2 — edge-case state accuracy  
-**Status:** Conditional behavior confirmed in source; relevance depends on whether multiple executions can match.
+**Priority:** P2 — edge-case status accuracy  
+**Status:** SOURCE MITIGATION COMMITTED; FAILURE-INJECTION TEST OPEN.
 
-In `PostsService.deletePost()`, a failure handling one workflow sets `workflowCancellation = 'unconfirmed'`. If the loop then processes another matching execution and successfully terminates it, it overwrites the value with `'requested'`, hiding the earlier failure. The normal workflow ID design suggests one current workflow per post, but the enumeration loop allows multiple matches and legacy/overlap conditions have not been ruled out.
+The successful termination path now preserves an earlier `unconfirmed` result rather than overwriting it with `requested` when a later matching execution terminates successfully. This fixes the result-aggregation defect identified in the first review.
 
-**Required change:** make `unconfirmed` sticky for the entire operation (or return per-workflow outcomes), and add a test where one termination fails and another succeeds. A cancellation request must not be described as proof that an already-running provider HTTP request was reversed.
+**Remaining gate:** add a test where one workflow termination fails and another succeeds. A termination request still does not prove that an external provider request already in flight was reversed.
 
 **Evidence:** [PostsService deletion path](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts).
-
 ### REVIEW-07 — Publishing audit documents disagree about current behavior
 **Priority:** P2 — audit correctness  
 **Status:** Confirmed documentation defect.
@@ -142,24 +146,24 @@ The autopost create route has `@CheckPolicies([AuthorizationActions.Create, Sect
 
 | Gate | Current assessment |
 |---|---|
-| GitHub Actions / combined status at reviewed head | **OPEN — zero runs/statuses returned** |
+| GitHub Actions / combined status at latest reviewed head | **OPEN — no successful run/status verified** |
 | Full workspace build on exact Node/pnpm pins | **OPEN** |
 | SSRF production-validator/dispatcher coverage | **OPEN** |
 | Two-organization DB/API tenant-isolation tests | **OPEN** |
-| Post workflow dispatch caller contract | **Needs correction and tests** |
-| Concurrent workflow conflict behavior | **Needs correction/design decision and tests** |
-| Autopost dispatch/cancellation observability | **Needs correction and tests** |
+| Post workflow dispatch caller contract | **Partially addressed; 6 helper tests pass locally; API/Temporal/CI proof OPEN** |
+| Concurrent workflow conflict behavior | **Destructive termination removed; 5 wait-state tests pass locally; in-flight/CAS race OPEN** |
+| Autopost dispatch/cancellation observability | **Source mitigation committed; tests and terminate semantics OPEN** |
 | Browser RTL/mobile/accessibility review | **OPEN** |
 | Live provider capability and approval proof | **OPEN** |
 | Production readiness / release approval | **NOT ESTABLISHED** |
 
 ## Recommended execution order
 
-1. Fix the post workflow dispatch result contract and the `TERMINATE_EXISTING` race; add deterministic tests before widening feature scope.
-2. Apply equivalent reporting/recovery semantics to autopost orchestration and define entitlement expectations.
-3. Bring the production SSRF wrapper/validator/dispatcher under tests; align Volta/Node pins.
+1. Add Temporal test-environment and service/API coverage for the new dispatch and schedule-signal behavior.
+2. Add Autopost failure-path tests and settle stop confirmation and entitlement semantics.
+3. Bring the production SSRF wrapper/validator/dispatcher under tests; run the pinned Node/pnpm toolchain.
 4. Add real DB/API two-tenant tests and trace internal mutation/error-storage callers.
-5. Consolidate the publishing audits and keep one status ledger.
+5. Consolidate the publishing audits and keep one authoritative status ledger.
 6. Run pinned-toolchain CI/full build, then browser RTL/accessibility tests and provider-approved publishing tests.
 
-**Scope limitation:** this pass re-fetched the GitHub PR, changed-file list, relevant source, diff patches, and CI/status metadata. It did not execute a fresh local build, run a live penetration test, or publish to a provider account. Findings labeled as source-confirmed are claims about code behavior, not observed production incidents.
+**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 6 dispatch-helper tests and 5 schedule-wait tests passed locally on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
