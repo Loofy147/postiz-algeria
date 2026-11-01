@@ -163,10 +163,20 @@ export class AutopostService {
         });
       },
       stop: async () => {
-        if (!this._temporalService.client.getRawClient()) {
+        const client = this._temporalService.client.getRawClient();
+        if (!client) {
           throw new Error('Temporal client is unavailable for autopost deactivation');
         }
-        await this._temporalService.terminateWorkflow(`autopost-${id}`);
+
+        try {
+          await client.workflow.getHandle(`autopost-${id}`).signal('stop');
+          return 'stop_requested' as const;
+        } catch (err) {
+          if (err instanceof WorkflowNotFoundError) {
+            return 'not_running' as const;
+          }
+          throw err;
+        }
       },
       onFailure: (err, operation) =>
         this.reportAutopostWorkflowFailure(err, operation, orgId, id),
