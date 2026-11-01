@@ -35,7 +35,7 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Map scheduler/worker retry behavior and possible duplicate-publish cases.
 - [x] Add a preliminary source-backed [Publishing Reliability Audit](PUBLISHING_RELIABILITY_AUDIT.md) identifying confirmed code surfaces and explicitly open follow-up tests; no provider or production claims are made.
 - [x] Inspect the Temporal publishing workflow's existing unknown-outcome and duplicate-prevention contracts; broad provider-by-provider fault-injection remains OPEN.
-- [x] Replace empty workflow-dispatch catches with Sentry reporting and propagated start failures at the callers. Backend typecheck, telemetry-delivery verification and reconciliation tests remain OPEN.
+- [x] Replace destructive queued-workflow restarts with `USE_EXISTING` plus `poke`; scheduled workflows re-read state/date and API responses expose dispatch status. Eleven focused helper tests pass locally; Temporal integration, pinned CI/full build, telemetry delivery and provider-call fault injection remain OPEN.
 - [ ] Identify observability gaps: job status, logs, queue lag, reconciliation, alerting and operator actions.
 - [ ] Complete [Integration Capability Matrix](INTEGRATION_CAPABILITY_MATRIX.md) with evidence for each priority provider.
 
