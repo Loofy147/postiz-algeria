@@ -147,7 +147,7 @@ export class AutopostService {
           throw new Error('Temporal client is unavailable for autopost activation');
         }
 
-        await client.workflow.start('autoPostWorkflow', {
+        await client.workflow.signalWithStart('autoPostWorkflow', {
           workflowId: `autopost-${id}`,
           taskQueue: 'main',
           args: [{ id, immediately: true }],
