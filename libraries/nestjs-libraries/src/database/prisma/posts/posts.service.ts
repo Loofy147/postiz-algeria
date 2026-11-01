@@ -949,7 +949,7 @@ export class PostsService {
 
             const status = (await workflow.describe()).status.name;
             if (status === 'RUNNING') {
-              await workflow.signal('poke');
+              await workflow.signal('stop');
               if (workflowSignal !== 'unconfirmed') {
                 workflowSignal = 'signalled';
               }
