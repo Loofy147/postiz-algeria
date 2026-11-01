@@ -59,6 +59,7 @@ import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validatio
 import { postContentPlainText } from '@gitroom/helpers/utils/sanitize.post.content';
 import { CreatePublicCommentDto } from '@gitroom/nestjs-libraries/dtos/comments/add.comment.dto';
 import { countLength } from '@gitroom/helpers/utils/count.length';
+import { dispatchPostWorkflow } from './post-workflow.dispatch';
 
 type PostWithConditionals = Post & {
   integration?: Integration;
@@ -931,7 +932,10 @@ export class PostsService {
                 (await workflow.describe()).status.name !== 'TERMINATED'
               ) {
                 await workflow.terminate();
-                workflowCancellation = 'requested';
+                // Keep an earlier failure visible when multiple executions match.
+                if (workflowCancellation !== 'unconfirmed') {
+                  workflowCancellation = 'requested';
+                }
               }
             } catch (err) {
               workflowCancellation = 'unconfirmed';
@@ -1010,6 +1014,29 @@ export class PostsService {
     });
   }
 
+  private async dispatchWorkflowWithReporting(
+    taskQueue: string,
+    postId: string,
+    orgId: string,
+    state: State
+  ) {
+    try {
+      return await this.startWorkflow(taskQueue, postId, orgId, state);
+    } catch (err) {
+      this.reportWorkflowDispatchFailure(
+        err,
+        'start',
+        taskQueue,
+        postId,
+        orgId
+      );
+      return {
+        status: 'unconfirmed' as const,
+        workflowId: `post_${postId}`,
+      };
+    }
+  }
+
   async startWorkflow(
     taskQueue: string,
     postId: string,
@@ -1021,76 +1048,53 @@ export class PostsService {
       throw new Error('Temporal client is unavailable; post workflow was not started');
     }
 
-    try {
-      const workflows = client.workflow.list({
-        query: `postId="${postId}" AND ExecutionStatus="Running"`,
-      });
+    const workflowId = `post_${postId}`;
+    const query = `postId="${postId}" AND ExecutionStatus="Running"`;
 
-      for await (const executionInfo of workflows) {
-        try {
+    return dispatchPostWorkflow({
+      state,
+      workflowId,
+      findRunningWorkflows: async () => {
+        const runningWorkflows = [];
+        const executions = client.workflow.list({ query });
+
+        for await (const executionInfo of executions) {
           const workflow = await this._temporalService.client.getWorkflowHandle(
             executionInfo.workflowId
           );
-          if (
-            workflow &&
-            (await workflow.describe()).status.name !== 'TERMINATED'
-          ) {
-            await workflow.terminate();
+          if (workflow) {
+            runningWorkflows.push(workflow);
           }
-        } catch (err) {
-          this.reportWorkflowDispatchFailure(
-            err,
-            'terminate-running',
-            taskQueue,
-            postId,
-            orgId,
-            executionInfo.workflowId
-          );
-          // Do not start another workflow when we cannot prove the old run was
-          // stopped: TERMINATE_EXISTING could interrupt an in-flight publish.
-          return false;
         }
-      }
-    } catch (err) {
-      this.reportWorkflowDispatchFailure(
-        err,
-        'list-running',
-        taskQueue,
-        postId,
-        orgId
-      );
-      // Fail closed: if the running-execution list is unavailable, starting
-      // with TERMINATE_EXISTING might terminate an unknown active publisher.
-      return false;
-    }
 
-    if (state === 'DRAFT') {
-      return;
-    }
-
-    // Let dispatch failures reach each caller so it can report them without
-    // turning a persisted post into an unobserved queue entry.
-    await client.workflow.start('postWorkflowV112', {
-      workflowId: `post_${postId}`,
-      taskQueue: 'main',
-      workflowIdConflictPolicy: 'TERMINATE_EXISTING',
-      args: [
-        {
-          taskQueue: taskQueue,
-          postId: postId,
-          organizationId: orgId,
-        },
-      ],
-      typedSearchAttributes: new TypedSearchAttributes([
-        {
-          key: postIdSearchParam,
-          value: postId,
-        },
-        {
-          key: organizationId,
-          value: orgId,
-        },
-      ]),
+        return runningWorkflows;
+      },
+      startOrReuseWorkflow: () =>
+        client.workflow.start('postWorkflowV112', {
+          workflowId,
+          taskQueue: 'main',
+          // Never terminate an execution here: it may be inside a provider
+          // mutation whose external outcome cannot be rolled back.
+          workflowIdConflictPolicy: 'USE_EXISTING',
+          args: [
+            {
+              taskQueue,
+              postId,
+              organizationId: orgId,
+            },
+          ],
+          typedSearchAttributes: new TypedSearchAttributes([
+            {
+              key: postIdSearchParam,
+              value: postId,
+            },
+            {
+              key: organizationId,
+              value: orgId,
+            },
+          ]),
+        }),
+      signalWorkflow: (workflow) => workflow.signal('poke'),
     });
   }
 
@@ -1307,24 +1311,23 @@ export class PostsService {
         posts.filter((p) => existingIds.includes(p.id))
       );
 
-      if (body.type !== 'update') {
-        const taskQueue = post.settings.__type.split('-')[0].toLowerCase();
-        this.startWorkflow(taskQueue, posts[0].id, orgId, posts[0].state).catch(
-          (err) =>
-            this.reportWorkflowDispatchFailure(
-              err,
-              'start',
-              taskQueue,
-              posts[0].id,
-              orgId
-            )
-        );
-      }
+      const workflowDispatch =
+        body.type === 'update'
+          ? 'not_requested'
+          : (
+              await this.dispatchWorkflowWithReporting(
+                post.settings.__type.split('-')[0].toLowerCase(),
+                posts[0].id,
+                orgId,
+                posts[0].state
+              )
+            ).status;
 
       Sentry.metrics.count('post_created', 1);
       postList.push({
         postId: posts[0].id,
         integration: post.integration.id,
+        workflowDispatch,
       });
     }
 
@@ -1499,22 +1502,16 @@ export class PostsService {
     const state: State = status === 'draft' ? 'DRAFT' : 'QUEUE';
     await this._postRepository.changeState(id, state);
 
-    const taskQueue = getPostById.integration.providerIdentifier
-      .split('-')[0]
-      .toLowerCase();
-    try {
-      await this.startWorkflow(taskQueue, getPostById.id, orgId, state);
-    } catch (err) {
-      this.reportWorkflowDispatchFailure(
-        err,
-        'start',
-        taskQueue,
+    const workflowDispatch = (
+      await this.dispatchWorkflowWithReporting(
+        getPostById.integration.providerIdentifier.split('-')[0].toLowerCase(),
         getPostById.id,
-        orgId
-      );
-    }
+        orgId,
+        state
+      )
+    ).status;
 
-    return { id, state };
+    return { id, state, workflowDispatch };
   }
 
   async changeDate(
@@ -1541,25 +1538,16 @@ export class PostsService {
     );
 
     if (action === 'schedule') {
-      const taskQueue = getPostById.integration.providerIdentifier
-        .split('-')[0]
-        .toLowerCase();
-      try {
-        await this.startWorkflow(
-          taskQueue,
+      const workflowDispatch = (
+        await this.dispatchWorkflowWithReporting(
+          getPostById.integration.providerIdentifier.split('-')[0].toLowerCase(),
           getPostById.id,
           orgId,
           getPostById.state === 'DRAFT' ? 'DRAFT' : 'QUEUE'
-        );
-      } catch (err) {
-        this.reportWorkflowDispatchFailure(
-          err,
-          'start',
-          taskQueue,
-          getPostById.id,
-          orgId
-        );
-      }
+        )
+      ).status;
+
+      return { ...newDate, workflowDispatch };
     }
 
     return newDate;
