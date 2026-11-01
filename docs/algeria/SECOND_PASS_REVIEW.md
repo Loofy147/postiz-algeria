@@ -51,20 +51,23 @@ The post dispatcher no longer terminates the previously running execution and no
 - [ ] Decide whether a database-level publishing-attempt/lease state is required to close the final check-to-request race.
 
 **Evidence:** [PostsService](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [schedule-wait helper](../../apps/orchestrator/src/workflows/post-workflows/post-schedule.wait.ts), [schedule-wait tests](../../scripts/test-post-schedule-wait.mjs).
-### REVIEW-03 — Autopost dispatch observability improved; tests remain OPEN
+### REVIEW-03 — Autopost dispatch reporting is implemented; integration proof remains OPEN
 
 **Priority:** P1 — automation reliability  
-**Status:** SOURCE MITIGATION COMMITTED; AUTOMATED TESTS AND RUNTIME VERIFICATION OPEN.
+**Status:** SOURCE MITIGATION COMMITTED; FOUR HELPER TESTS PASS LOCALLY; SERVICE/WORKER INTEGRATION OPEN.
 
-`AutopostService.processCron()` now checks for a Temporal client instead of relying on optional chaining. Start and stop failures produce structured Logger/Sentry events with organization, autopost and workflow IDs, without embedding feed content or credentials. Create/update, active-toggle and delete responses now include a `workflowDispatch` status: `started_or_reused`, `stop_requested`, or `unconfirmed`.
+`AutopostService.processCron()` now checks the Temporal client instead of relying on optional chaining. Start and stop errors produce structured Logger/Sentry events with organization, autopost and workflow IDs, without embedding feed content or credentials. Create/update, active-toggle and delete responses include a `workflowDispatch` status: `started_or_reused`, `stop_requested`, or `unconfirmed`.
+
+The decision/result contract is isolated in `autopost.workflow.dispatch.ts`. Four standalone tests pass locally on Node `v22.16.0`, covering activation, deactivation, and failure reporting for both paths.
 
 **Remaining gates**
-- [ ] Add tests for missing Temporal client, start failure, stop failure, repeated activation/deactivation, and deleted records with a still-running execution.
+- [ ] Add service-level tests for missing Temporal client, stable workflow ID, and Sentry context.
 - [ ] Confirm whether `terminateWorkflow()` distinguishes “no workflow existed” from “termination requested”; do not overstate `stop_requested`.
-- [ ] Verify the active autopost recovery mechanism after a worker restart.
+- [ ] Verify active-autopost recovery after a worker restart and deletion while a workflow is active.
 - [ ] Resolve whether subscription/role policy is intended to gate update, activate and deactivate as well as create.
 
-**Evidence:** [AutopostService](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [AutopostController](../../apps/backend/src/api/routes/autopost.controller.ts).
+**Evidence:** [AutopostService](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.service.ts), [dispatch helper](../../libraries/nestjs-libraries/src/database/prisma/autopost/autopost.workflow.dispatch.ts), [tests](../../scripts/test-autopost-workflow-dispatch.mjs), [AutopostController](../../apps/backend/src/api/routes/autopost.controller.ts).
+
 ### REVIEW-04 — SSRF tests bypass the production URL validator and dispatcher
 **Priority:** P1 — security verification gap  
 **Status:** Mitigation code is present; production gate remains unverified.
@@ -166,4 +169,4 @@ The autopost create route has `@CheckPolicies([AuthorizationActions.Create, Sect
 5. Consolidate the publishing audits and keep one authoritative status ledger.
 6. Run pinned-toolchain CI/full build, then browser RTL/accessibility tests and provider-approved publishing tests.
 
-**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 6 dispatch-helper tests and 5 schedule-wait tests passed locally on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
+**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 6 post-dispatch tests, 5 schedule-wait tests, and 4 Autopost-dispatch tests passed locally on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
