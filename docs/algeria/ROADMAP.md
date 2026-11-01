@@ -35,7 +35,7 @@ A phase is complete only when its exit criteria are supported by inspectable evi
 - [ ] Map scheduler/worker retry behavior and possible duplicate-publish cases.
 - [x] Add a preliminary source-backed [Publishing Reliability Audit](PUBLISHING_RELIABILITY_AUDIT.md) identifying confirmed code surfaces and explicitly open follow-up tests; no provider or production claims are made.
 - [x] Inspect the Temporal publishing workflow's existing unknown-outcome and duplicate-prevention contracts; broad provider-by-provider fault-injection remains OPEN.
-- [x] Replace destructive queued-workflow restarts with `USE_EXISTING` plus `poke`; scheduled workflows re-read state/date and post API responses expose dispatch status. Autopost activation/deactivation now report explicit workflow outcomes. Fifteen focused helper/state-machine tests pass locally on Node 22.16.0; Temporal integration, pinned CI/full build, telemetry delivery and provider-call fault injection remain OPEN.
+- [x] Use Temporal `signalWithStart` + `USE_EXISTING` for atomic queued-post start/reuse and `poke`; scheduled workflows re-read state/date and post API responses expose dispatch status. Deletion signals active workflows rather than terminating them and prevents later comments/follow-up actions after the deleted row is observed. Autopost dispatch errors are observable. Sixteen focused helper/state-machine tests pass locally on Node 22.16.0; Temporal integration, pinned CI/full build, telemetry delivery and provider-call fault injection remain OPEN.
 - [ ] Identify observability gaps: job status, logs, queue lag, reconciliation, alerting and operator actions.
 - [ ] Complete [Integration Capability Matrix](INTEGRATION_CAPABILITY_MATRIX.md) with evidence for each priority provider.
 
