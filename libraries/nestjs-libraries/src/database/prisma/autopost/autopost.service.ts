@@ -18,6 +18,7 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
 import * as Sentry from '@sentry/nestjs';
+import { WorkflowNotFoundError } from '@temporalio/client';
 import { dispatchAutopostWorkflow } from './autopost.workflow.dispatch';
 import {
   organizationId,
