@@ -210,8 +210,7 @@ export async function postWorkflowV112({
   let postsListBefore = await getPostsList(organizationId, postId);
   let [post] = postsListBefore;
 
-  if (!post) {
-    await changeState(postId, 'ERROR', 'No Post');
+  if (!post || stopRequested) {
     return;
   }
 
@@ -225,8 +224,7 @@ export async function postWorkflowV112({
     postsListBefore = await getPostsList(organizationId, postId);
     [post] = postsListBefore;
 
-    if (!post) {
-      await changeState(postId, 'ERROR', 'No Post');
+    if (!post || stopRequested) {
       return;
     }
 
