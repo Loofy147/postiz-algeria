@@ -11,7 +11,6 @@ type AutopostWorkflowDispatchOptions = {
   onFailure: (error: unknown, operation: 'start' | 'terminate') => void;
 };
 
-/** Execute an autopost workflow transition and never hide failed orchestration. */
 export async function dispatchAutopostWorkflow({
   active,
   start,
@@ -19,13 +18,11 @@ export async function dispatchAutopostWorkflow({
   onFailure,
 }: AutopostWorkflowDispatchOptions): Promise<{ status: AutopostWorkflowDispatchStatus }> {
   const operation = active ? 'start' : 'terminate';
-
   try {
     if (active) {
       await start();
       return { status: 'started_or_reused' };
     }
-
     return { status: await stop() };
   } catch (error) {
     onFailure(error, operation);
