@@ -1,12 +1,13 @@
 export type AutopostWorkflowDispatchStatus =
   | 'started_or_reused'
   | 'stop_requested'
+  | 'not_running'
   | 'unconfirmed';
 
 type AutopostWorkflowDispatchOptions = {
   active: boolean;
   start: () => Promise<unknown>;
-  stop: () => Promise<unknown>;
+  stop: () => Promise<'stop_requested' | 'not_running'>;
   onFailure: (error: unknown, operation: 'start' | 'terminate') => void;
 };
 
@@ -25,8 +26,7 @@ export async function dispatchAutopostWorkflow({
       return { status: 'started_or_reused' };
     }
 
-    await stop();
-    return { status: 'stop_requested' };
+    return { status: await stop() };
   } catch (error) {
     onFailure(error, operation);
     return { status: 'unconfirmed' };
