@@ -112,16 +112,16 @@ The delete path now returns `workflowSignal: 'not_required' | 'signalled' | 'unc
 - [ ] Add a durable publish lease/CAS if fault injection demonstrates the final check-to-request race is unacceptable.
 
 **Evidence:** [PostsService deletion path](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [post workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [schedule wait helper](../../apps/orchestrator/src/workflows/post-workflows/post-schedule.wait.ts), [schedule wait tests](../../scripts/test-post-schedule-wait.mjs).
-### REVIEW-07 — Publishing audit documents disagree about current behavior
-**Priority:** P2 — audit correctness  
-**Status:** Confirmed documentation defect.
+### REVIEW-07 — Publishing audit source-of-truth corrected
 
-There are two overlapping publishing audits: `PUBLISHING_AND_PROVIDER_AUDIT.md` and `PUBLISHING_RELIABILITY_AUDIT.md`. The former is linked by the README and gap register as the main audit; the roadmap links both. The second-pass audit file still says deletion cancellation exceptions “are swallowed” in its source-surface table, then later says the cancellation reporting mitigation has been committed. Its immediate implementation plan also repeats steps and numbering. Those contradictions make it unclear which status is authoritative.
+**Priority:** P2 — audit quality  
+**Status:** DOCUMENTATION MITIGATION COMMITTED; PERIODIC CONSISTENCY CHECKS REMAIN OPEN.
 
-**Required change:** designate one canonical audit, link the second as a dated supplement or merge its unique findings, remove stale claims and duplicate checklist entries, and update the dispatch status wording after REVIEW-01 is fixed. Never mark a finding closed from a commit message alone.
+The repository now designates `PUBLISHING_AND_PROVIDER_AUDIT.md` as the canonical publishing audit. `PUBLISHING_RELIABILITY_AUDIT.md` is explicitly labelled a supplementary source review. Its stale claim that deletion cancellation errors are still swallowed has been corrected; PR-AUD-01 now describes the `stop` signal, root/child workflows, and remaining in-flight provider limitations. Duplicate numbering in the supplementary implementation plan has also been removed.
 
-**Evidence:** [primary audit](PUBLISHING_AND_PROVIDER_AUDIT.md), [preliminary audit](PUBLISHING_RELIABILITY_AUDIT.md), [README](README.md), [roadmap](ROADMAP.md), [gap register](ADD_ONS_AND_GAP_REGISTER.md).
+**Remaining gate:** keep a single current status ledger and update both reports whenever implementation behavior changes. The supplementary audit remains useful for detailed source observations, but it must not contradict the canonical findings.
 
+**Evidence:** [canonical audit](PUBLISHING_AND_PROVIDER_AUDIT.md), [supplementary source review](PUBLISHING_RELIABILITY_AUDIT.md), [README](README.md), [roadmap](ROADMAP.md), [gap register](ADD_ONS_AND_GAP_REGISTER.md).
 ### REVIEW-08 — Tenant ownership tests are unit tests, not database/API isolation proof
 **Priority:** P1 release gate  
 **Status:** Confirmed scope limitation; no application-wide tenant breach is asserted.
@@ -177,4 +177,4 @@ The autopost create route has `@CheckPolicies([AuthorizationActions.Create, Sect
 5. Consolidate the publishing audits and keep one authoritative status ledger.
 6. Run pinned-toolchain CI/full build, then browser RTL/accessibility tests and provider-approved publishing tests.
 
-**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 7 post-dispatch tests, 5 schedule-wait tests, and 4 Autopost-dispatch tests passed locally on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
+**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 7 post-dispatch tests, 6 schedule-wait tests, and 4 Autopost-dispatch tests passed locally (17/17 combined) on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
