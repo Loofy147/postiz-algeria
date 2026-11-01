@@ -94,3 +94,16 @@ test('stops when the post has been deleted', async () => {
 
   assert.equal(result, null);
 });
+
+test('stops promptly when a graceful stop signal arrives', async () => {
+  let stopped = false;
+  const result = await waitUntilPostScheduled({
+    loadPost: async () => ({ state: 'QUEUE', publishDate: new Date(500_000) }),
+    isPoked: () => false,
+    consumePoke: () => undefined,
+    waitForPoke: async () => { stopped = true; return true; },
+    shouldStop: () => stopped,
+    now: () => 100_000,
+  });
+  assert.equal(result, null);
+});
