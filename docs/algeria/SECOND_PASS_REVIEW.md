@@ -1,10 +1,12 @@
 # Second-Pass Engineering Review — Postiz Algeria
 
 **Review date:** 2026-11-01  
-**Reviewed PR head:** `df6ba0f009720db8c2f8af1a5f42d39eb3b38cd5`  
+**Reviewed PR head:** `fa4c72fd2854874fd4840b5a19605f5ef651bca3`  
 **Branch:** `feature/algeria-product-foundation`  
 **PR:** [#1](https://github.com/Loofy147/postiz-algeria/pull/1)  
-**Review type:** Read-only source/diff/CI metadata review. This is not a runtime penetration test or production-readiness certification.
+**Review type:** Source/diff review with focused standalone helper tests. This is not a backend/full-workspace build, Temporal integration test, runtime penetration test or production-readiness certification.
+
+**Reviewed PR diff:** 40 files changed (+3086/-151) at the last PR metadata fetch.
 
 ## Executive verdict
 
@@ -94,21 +96,22 @@ Root `package.json` declares Node `22.23.4` and pnpm `10.6.1`; the build workflo
 **Remaining gate:** run all tests and the full workspace build under exactly Node `22.23.4` / pnpm `10.6.1`. The local standalone tests in this follow-up used Node `22.16.0` and do not close this gate.
 
 **Evidence:** [package.json](../../package.json), [build workflow](../../.github/workflows/build.yml).
-### REVIEW-06 — Post deletion now signals workflows instead of terminating them
+### REVIEW-06 — Post deletion now requests graceful stop across root and repeat workflows
 
 **Priority:** P1 — publication integrity / data lifecycle  
 **Status:** SOURCE MITIGATION COMMITTED; TEMPORAL AND IN-FLIGHT FAILURE TESTS OPEN.
 
-The delete path now returns `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`. It signals the stable root workflow ID directly and also signals other running executions found by the Temporal visibility query. This avoids terminating an execution that may be waiting on an irreversible provider request. The scheduled workflow sees the soft-deleted row as missing and exits when it next evaluates state. If the main provider request was already underway, it is allowed to return so the outcome can be recorded; subsequent comments, webhooks, and follow-up plug/repeat actions check whether the root post still exists and stop after deletion.
+The delete path now returns `workflowSignal: 'not_required' | 'signalled' | 'unconfirmed'`. It signals the stable root workflow ID directly and also signals other running executions found by the Temporal visibility query. Deletion sends a dedicated `stop` signal, distinct from `poke` used for rescheduling. The workflow stop handler wakes scheduled waits and sets a durable workflow-local stop flag. This also covers repeat-post child workflows (`postNow=true`), which previously could bypass the scheduled wait. A provider activity already in flight is allowed to return and persist its result; after that, the workflow exits before starting comments, notifications, webhooks, plugs or another repeat action. It also exits before starting a provider action when it has observed the stop or deleted root.
 
-**Residual uncertainty:** the Temporal visibility query is eventually consistent, so the stable root handle is signalled separately. A race still exists if deletion lands after the final database existence check but before a provider request is sent. A request already accepted by the provider cannot be rolled back. The code does not claim exactly-once external effects.
+**Residual uncertainty:** the Temporal visibility query is eventually consistent, so the stable root handle is signalled separately; repeat child discovery still depends on visibility. A narrow race remains if deletion lands after the last database existence check but before a provider request is sent. An external request already accepted by the provider cannot be rolled back. The code does not claim exactly-once external effects.
 
 **Remaining gates**
-- [ ] Add tests for Temporal unavailable, visibility-list failure, root workflow not found, multiple running executions, signal failure and a provider activity already in flight.
-- [ ] Prove a provider-accepted publish is still recorded after deletion while later comments and downstream actions are skipped.
+- [ ] Add Temporal test-environment coverage for stop signal delivery to root and repeat child executions.
+- [ ] Inject deletion while main publish/comment activities are in flight; verify accepted results are recorded and no subsequent actions run.
+- [ ] Test visibility-list failure, missing root, multiple children and signal failure.
 - [ ] Add a durable publish lease/CAS if fault injection demonstrates the final check-to-request race is unacceptable.
 
-**Evidence:** [PostsService deletion path](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [post workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts).
+**Evidence:** [PostsService deletion path](../../libraries/nestjs-libraries/src/database/prisma/posts/posts.service.ts), [post workflow v1.1.2](../../apps/orchestrator/src/workflows/post-workflows/post.workflow.v1.1.2.ts), [schedule wait helper](../../apps/orchestrator/src/workflows/post-workflows/post-schedule.wait.ts), [schedule wait tests](../../scripts/test-post-schedule-wait.mjs).
 ### REVIEW-07 — Publishing audit documents disagree about current behavior
 **Priority:** P2 — audit correctness  
 **Status:** Confirmed documentation defect.
