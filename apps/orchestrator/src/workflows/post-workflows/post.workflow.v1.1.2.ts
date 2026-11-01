@@ -209,7 +209,7 @@ export async function postWorkflowV112({
   // publish time, not from when the workflow was started. Measuring from the
   // workflow start subtracted the whole scheduling wait from the interval
   // (a post scheduled further out than its interval repeated immediately).
-  const startTime = new Date();
+  let startTime = new Date();
 
   let postsListBefore = await getPostsList(organizationId, postId);
   let [post] = postsListBefore;
@@ -479,7 +479,10 @@ export async function postWorkflowV112({
     while (true) {
       const latest = await getPost(organizationId, postId);
       if (!latest || latest.state !== 'QUEUE') return false;
-      if (!poked && !dayjs(latest.publishDate).isAfter(dayjs())) return true;
+      if (!poked && !dayjs(latest.publishDate).isAfter(dayjs())) {
+        startTime = new Date();
+        return true;
+      }
 
       if (!(await waitUntilScheduled())) return false;
 
@@ -498,7 +501,10 @@ export async function postWorkflowV112({
 
       const afterLoad = await getPost(organizationId, postId);
       if (!afterLoad || afterLoad.state !== 'QUEUE') return false;
-      if (!poked && !dayjs(afterLoad.publishDate).isAfter(dayjs())) return true;
+      if (!poked && !dayjs(afterLoad.publishDate).isAfter(dayjs())) {
+        startTime = new Date();
+        return true;
+      }
     }
   };
 
