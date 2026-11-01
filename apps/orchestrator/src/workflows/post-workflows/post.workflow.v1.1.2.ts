@@ -668,12 +668,22 @@ export async function postWorkflowV112({
     }
   }
 
+  // A delete signal may have arrived while a provider activity was running.
+  // Keep the provider outcome recorded, but skip all remaining downstream work.
+  if (!postNow && !(await getPost(organizationId, postId))) {
+    return false;
+  }
+
   // send webhooks for the post
   await sendWebhooks(
     postsResults[0].postId,
     post.organizationId,
     post.integration.id
   );
+
+  if (!postNow && !(await getPost(organizationId, postId))) {
+    return false;
+  }
 
   // load internal plugs like repost by other users
   const internalPlugsList = await internalPlugs(
@@ -721,6 +731,11 @@ export async function postWorkflowV112({
 
     // wait for the delay
     await sleep(Math.max(0, Number(todo.delay ?? 0)));
+
+    // Do not start additional internal/global/repeat actions after deletion.
+    if (!postNow && !(await getPost(organizationId, postId))) {
+      return false;
+    }
 
     // process internal plug
     if (todo.type === 'internal-plug') {
