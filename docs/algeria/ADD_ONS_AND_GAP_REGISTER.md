@@ -105,7 +105,7 @@ Evidence note: Node.js `22.23.4` is a published Node 22 LTS security release dat
 - [x] Make scheduled waits re-read persisted state/date after `poke` and refresh the snapshot before the first provider call.
 - [x] Return explicit `workflowDispatch` statuses from create, status-change and schedule-date APIs; failed dispatch returns `unconfirmed`.
 - [x] For deletion, signal root and visible child executions with a dedicated `stop` signal instead of terminating them.
-- [x] Make stop wake a sleeping scheduled workflow and stop repeat-post child workflows even when they use `postNow=true`.
+- [x] Make stop wake sleeping scheduled waits and delayed comment/follow-up waits; stop repeat-post child workflows even when they use `postNow=true`.
 - [x] Let an in-flight provider activity return and record its result, then skip subsequent comments, notifications, webhooks, plugs and repeat actions after stop/deletion is observed.
 - [x] Return deletion's `workflowSignal` as `not_required`, `signalled` or `unconfirmed`.
 - [x] Add seven dispatch-helper tests and six schedule-wait tests. The four Autopost dispatch tests also pass; combined local focused result is 17/17 on Node `v22.16.0`.
