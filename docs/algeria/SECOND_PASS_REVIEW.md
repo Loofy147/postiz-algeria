@@ -177,4 +177,4 @@ The autopost create route has `@CheckPolicies([AuthorizationActions.Create, Sect
 5. Consolidate the publishing audits and keep one authoritative status ledger.
 6. Run pinned-toolchain CI/full build, then browser RTL/accessibility tests and provider-approved publishing tests.
 
-**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 7 post-dispatch tests, 6 schedule-wait tests, and 4 Autopost-dispatch tests passed locally (17/17 combined) on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
+**Scope limitation:** this follow-up re-fetched the GitHub source and reviewed the committed diffs. The 7 post-dispatch tests, 6 schedule-wait tests, and 5 Autopost-dispatch tests passed locally (18/18 combined) on Node `v22.16.0`; no backend/full workspace build, Temporal test-environment run, successful GitHub Actions run, live penetration test, or provider publish is claimed. Findings describe source behavior, not production incidents.
