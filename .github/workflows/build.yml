@@ -65,5 +65,8 @@ jobs:
       - name: Run scheduled post wait regression tests
         run: pnpm run test:post-schedule-wait
 
+      - name: Run autopost workflow dispatch regression tests
+        run: pnpm run test:autopost-dispatch
+
       - name: Build
         run: pnpm run build
