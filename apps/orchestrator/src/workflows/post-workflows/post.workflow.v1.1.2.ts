@@ -20,6 +20,7 @@ import {
   TypedSearchAttributes,
 } from '@temporalio/common';
 import { postId as postIdSearchParam } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
+import { waitUntilPostScheduled } from './post-schedule.wait';
 
 // The publishing activities heartbeat every 15s (withHeartbeat sends its first
 // heartbeat at the first interval tick, not at entry), so a heartbeat timeout
@@ -153,36 +154,15 @@ export async function postWorkflowV112({
   // A reschedule or draft transition signals the existing workflow rather
   // than terminating it. Re-read the persisted post whenever that signal
   // arrives, so a sleeping workflow follows the latest date/state.
-  const waitUntilScheduled = async (): Promise<boolean> => {
-    let scheduledPost = await getPost(organizationId, postId);
-
-    while (scheduledPost) {
-      if (scheduledPost.state !== 'QUEUE') {
-        return false;
-      }
-
-      if (poked) {
+  const waitUntilScheduled = async (): Promise<boolean> =>
+    !!(await waitUntilPostScheduled({
+      loadPost: () => getPost(organizationId, postId),
+      isPoked: () => poked,
+      consumePoke: () => {
         poked = false;
-        scheduledPost = await getPost(organizationId, postId);
-        continue;
-      }
-
-      const remainingMs = dayjs(scheduledPost.publishDate).diff(dayjs());
-      if (remainingMs <= 0) {
-        return true;
-      }
-
-      const wasPoked = await condition(() => poked, remainingMs);
-      if (!wasPoked) {
-        return true;
-      }
-
-      poked = false;
-      scheduledPost = await getPost(organizationId, postId);
-    }
-
-    return false;
-  };
+      },
+      waitForPoke: (timeoutMs) => condition(() => poked, timeoutMs),
+    }));
 
   // get all the posts and comments to post
   const firstPost = await getPost(organizationId, postId);
