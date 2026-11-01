@@ -59,5 +59,8 @@ jobs:
       - name: Run tenant ownership regression tests
         run: pnpm run test:tenant-safety
 
+      - name: Run post workflow dispatch regression tests
+        run: pnpm run test:post-workflow-dispatch
+
       - name: Build
         run: pnpm run build
