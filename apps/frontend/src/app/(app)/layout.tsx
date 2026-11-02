@@ -19,19 +19,29 @@ import { cookies } from 'next/headers';
 import {
   cookieName,
   fallbackLng,
+  languages,
 } from '@gitroom/react/translation/i18n.config';
+import {
+  getLanguageDirection,
+  resolveSupportedLanguage,
+} from '@gitroom/react/translation/locale.utils';
 import { HtmlComponent } from '@gitroom/frontend/components/layout/html.component';
 import Script from 'next/script';
 import { ChangeDirClient } from '@gitroom/frontend/components/new-layout/change.dir.client';
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const cookieStore = await cookies();
-  const language = cookieStore.get(cookieName)?.value || fallbackLng;
+  const language = resolveSupportedLanguage(
+    cookieStore.get(cookieName)?.value,
+    languages,
+    fallbackLng
+  );
+  const direction = getLanguageDirection(language);
   const Plausible = !!process.env.STRIPE_PUBLISHABLE_KEY
     ? PlausibleProvider
     : Fragment;
   return (
-    <html>
+    <html lang={language} dir={direction}>
       <head>
         <link rel="icon" href="/favicon.ico" sizes="any" />
         {!!process.env.DATAFAST_WEBSITE_ID && (

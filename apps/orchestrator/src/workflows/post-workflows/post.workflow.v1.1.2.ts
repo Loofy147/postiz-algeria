@@ -5,6 +5,7 @@ import {
   startChild,
   proxyActivities,
   sleep,
+  condition,
   defineSignal,
   setHandler,
 } from '@temporalio/workflow';
@@ -19,6 +20,7 @@ import {
   TypedSearchAttributes,
 } from '@temporalio/common';
 import { postId as postIdSearchParam } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
+import { waitUntilPostScheduled } from './post-schedule.wait';
 
 // The publishing activities heartbeat every 15s (withHeartbeat sends its first
 // heartbeat at the first interval tick, not at entry), so a heartbeat timeout
@@ -109,6 +111,7 @@ const {
 });
 
 const poke = defineSignal('poke');
+const stopPost = defineSignal('stop');
 
 const iterate = Array.from({ length: 5 });
 
@@ -145,31 +148,56 @@ export async function postWorkflowV112({
   const { postSocialPending, finalizePost } = proxyMutationTaskQueue(taskQueue);
 
   let poked = false;
+  let stopRequested = false;
   setHandler(poke, () => {
     poked = true;
   });
+  setHandler(stopPost, () => {
+    stopRequested = true;
+    poked = true;
+  });
+
+  const waitForDelayOrStop = async (delayMs: number): Promise<boolean> => {
+    if (stopRequested) return false;
+    const stopped = await condition(
+      () => stopRequested,
+      Math.max(0, delayMs)
+    );
+    return !stopped && !stopRequested;
+  };
+
+  // A reschedule or draft transition signals the existing workflow rather
+  // than terminating it. Re-read the persisted post whenever that signal
+  // arrives, so a sleeping workflow follows the latest date/state.
+  const waitUntilScheduled = async (): Promise<boolean> =>
+    !!(await waitUntilPostScheduled({
+      loadPost: () => getPost(organizationId, postId),
+      isPoked: () => poked,
+      consumePoke: () => {
+        poked = false;
+      },
+      waitForPoke: (timeoutMs) => condition(() => poked || stopRequested, timeoutMs),
+      shouldStop: () => stopRequested,
+    }));
 
   // get all the posts and comments to post
   const firstPost = await getPost(organizationId, postId);
 
-  // in case doesn't exists for some reason, fail it
-  if (!firstPost) {
-    await changeState(postId, 'ERROR', 'No Post');
+  // A missing row can be a deliberate delete while this workflow was
+  // starting. Do not write ERROR onto a soft-deleted post.
+  if (!firstPost || stopRequested) {
     return;
   }
 
+  // A draft or an already-published post is not a failed publish attempt.
+  // In particular, a draft signal must never overwrite DRAFT with ERROR.
   if (!postNow && firstPost.state !== 'QUEUE') {
-    await changeState(firstPost.id, 'ERROR', 'Already posted', [firstPost]);
     return;
   }
 
-  // wait for the scheduled publish date
-  if (!postNow) {
-    await sleep(
-      dayjs(firstPost.publishDate).isBefore(dayjs())
-        ? 0
-        : dayjs(firstPost.publishDate).diff(dayjs(), 'millisecond')
-    );
+  // Wait durably, but allow edits/reschedules to wake this workflow.
+  if (!postNow && !(await waitUntilScheduled())) {
+    return;
   }
 
   // Captured AFTER the scheduling sleep: the repeat-post delay is
@@ -177,14 +205,32 @@ export async function postWorkflowV112({
   // publish time, not from when the workflow was started. Measuring from the
   // workflow start subtracted the whole scheduling wait from the interval
   // (a post scheduled further out than its interval repeated immediately).
-  const startTime = new Date();
+  let startTime = new Date();
 
-  const postsListBefore = await getPostsList(organizationId, postId);
-  const [post] = postsListBefore;
+  let postsListBefore = await getPostsList(organizationId, postId);
+  let [post] = postsListBefore;
 
-  if (!post) {
-    await changeState(postId, 'ERROR', 'No Post');
+  if (!post || stopRequested) {
     return;
+  }
+
+  // A signal may arrive while the post list is being loaded. Re-wait against
+  // the latest row before doing any provider preparation.
+  if (!postNow && (poked || post.state !== 'QUEUE' || dayjs(post.publishDate).isAfter(dayjs()))) {
+    if (!(await waitUntilScheduled())) {
+      return;
+    }
+
+    postsListBefore = await getPostsList(organizationId, postId);
+    [post] = postsListBefore;
+
+    if (!post || stopRequested) {
+      return;
+    }
+
+    if (post.state !== 'QUEUE') {
+      return;
+    }
   }
 
   // if refresh is needed from last time, let's inform the user
@@ -421,6 +467,43 @@ export async function postWorkflowV112({
     return false;
   };
 
+  const refreshBeforePublish = async (): Promise<boolean> => {
+    if (stopRequested) return false;
+    if (postNow) return true;
+
+    while (true) {
+      if (stopRequested) return false;
+      const latest = await getPost(organizationId, postId);
+      if (!latest || latest.state !== 'QUEUE') return false;
+      if (!poked && !dayjs(latest.publishDate).isAfter(dayjs())) {
+        startTime = new Date();
+        return true;
+      }
+
+      if (!(await waitUntilScheduled())) return false;
+
+      postsListBefore = await getPostsList(organizationId, postId);
+      const [refreshed] = postsListBefore;
+      if (!refreshed || refreshed.state !== 'QUEUE') return false;
+
+      post = refreshed;
+      const includeComments =
+        postsListBefore.length > 1 && (await isCommentable(post.integration));
+      postsList.splice(
+        0,
+        postsList.length,
+        ...(includeComments ? postsListBefore : [postsListBefore[0]])
+      );
+
+      const afterLoad = await getPost(organizationId, postId);
+      if (!afterLoad || afterLoad.state !== 'QUEUE') return false;
+      if (!poked && !dayjs(afterLoad.publishDate).isAfter(dayjs())) {
+        startTime = new Date();
+        return true;
+      }
+    }
+  };
+
   // iterate over the posts
   for (let i = 0; i < postsList.length; i++) {
     const before = postsResults.length;
@@ -435,6 +518,11 @@ export async function postWorkflowV112({
       // status checks below must never be mistaken for never-started
       let heartbeats = false;
       try {
+        if (stopRequested || !(await getPost(organizationId, postId))) {
+          return false;
+        }
+        if (i === 0 && !(await refreshBeforePublish())) return false;
+
         // first post the main post
         if (i === 0) {
           heartbeats = true;
@@ -447,7 +535,17 @@ export async function postWorkflowV112({
           // then post the comments if any
         } else {
           if (postsList[i].delay) {
-            await sleep(60000 * Math.max(0, Number(postsList[i].delay ?? 0)));
+            const delayCompleted = await waitForDelayOrStop(
+              60000 * Math.max(0, Number(postsList[i].delay ?? 0))
+            );
+            if (!delayCompleted) return false;
+          }
+
+          // The main provider publish may have completed while a deletion was
+          // requested. Preserve its recorded outcome, but do not send any more
+          // comments after the root post has been soft-deleted.
+          if (stopRequested || !(await getPost(organizationId, postId))) {
+            return false;
           }
 
           heartbeats = true;
@@ -497,6 +595,12 @@ export async function postWorkflowV112({
           postsResults[i].releaseURL
         );
         updated = true;
+
+        // Preserve the accepted provider result, then stop without emitting
+        // notifications or starting subsequent work after a graceful stop.
+        if (stopRequested || !(await getPost(organizationId, postId))) {
+          return false;
+        }
 
         if (i === 0) {
           // send notification on a sucessful post
@@ -592,12 +696,22 @@ export async function postWorkflowV112({
     }
   }
 
+  // A delete signal may have arrived while a provider activity was running.
+  // Keep the provider outcome recorded, but skip all remaining downstream work.
+  if (stopRequested || !(await getPost(organizationId, postId))) {
+    return false;
+  }
+
   // send webhooks for the post
   await sendWebhooks(
     postsResults[0].postId,
     post.organizationId,
     post.integration.id
   );
+
+  if (stopRequested || !(await getPost(organizationId, postId))) {
+    return false;
+  }
 
   // load internal plugs like repost by other users
   const internalPlugsList = await internalPlugs(
@@ -643,8 +757,16 @@ export async function postWorkflowV112({
     // get the next to process
     const todo = list.shift();
 
-    // wait for the delay
-    await sleep(Math.max(0, Number(todo.delay ?? 0)));
+    // Wait for the delay, but let a graceful stop wake the workflow now.
+    const delayCompleted = await waitForDelayOrStop(
+      Math.max(0, Number(todo.delay ?? 0))
+    );
+    if (!delayCompleted) return false;
+
+    // Do not start additional internal/global/repeat actions after deletion.
+    if (stopRequested || !(await getPost(organizationId, postId))) {
+      return false;
+    }
 
     // process internal plug
     if (todo.type === 'internal-plug') {

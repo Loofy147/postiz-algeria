@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
@@ -58,6 +59,7 @@ import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validatio
 import { postContentPlainText } from '@gitroom/helpers/utils/sanitize.post.content';
 import { CreatePublicCommentDto } from '@gitroom/nestjs-libraries/dtos/comments/add.comment.dto';
 import { countLength } from '@gitroom/helpers/utils/count.length';
+import { dispatchPostWorkflow } from './post-workflow.dispatch';
 
 type PostWithConditionals = Post & {
   integration?: Integration;
@@ -897,30 +899,82 @@ export class PostsService {
     const post = await this._postRepository.deletePost(orgId, group);
 
     if (post?.id) {
-      try {
-        const workflows = this._temporalService.client
-          .getRawClient()
-          ?.workflow.list({
+      // Signal running workflows to reload the now-deleted row. Do not
+      // terminate an execution that may be inside an irreversible provider
+      // request; let that activity return so its result can still be recorded.
+      let workflowSignal: 'not_required' | 'signalled' | 'unconfirmed' =
+        'not_required';
+      const client = this._temporalService.client.getRawClient();
+
+      if (!client) {
+        workflowSignal = 'unconfirmed';
+        this.reportWorkflowDispatchFailure(
+          new Error('Temporal client is unavailable during post deletion'),
+          'signal-running',
+          'main',
+          post.id,
+          orgId
+        );
+      } else {
+        const workflowIds = new Set<string>([`post_${post.id}`]);
+
+        // Visibility queries are eventually consistent; also signal the stable
+        // root workflow ID directly so deletion does not depend solely on search.
+        try {
+          const workflows = client.workflow.list({
             query: `postId="${post.id}" AND ExecutionStatus="Running"`,
           });
 
-        for await (const executionInfo of workflows) {
+          for await (const executionInfo of workflows) {
+            workflowIds.add(executionInfo.workflowId);
+          }
+        } catch (err) {
+          workflowSignal = 'unconfirmed';
+          this.reportWorkflowDispatchFailure(
+            err,
+            'list-running',
+            'main',
+            post.id,
+            orgId
+          );
+        }
+
+        for (const workflowId of workflowIds) {
           try {
             const workflow =
-              await this._temporalService.client.getWorkflowHandle(
-                executionInfo.workflowId
-              );
-            if (
-              workflow &&
-              (await workflow.describe()).status.name !== 'TERMINATED'
-            ) {
-              await workflow.terminate();
+              await this._temporalService.client.getWorkflowHandle(workflowId);
+            if (!workflow) {
+              continue;
             }
-          } catch (err) {}
-        }
-      } catch (err) {}
 
-      return { id: post.id };
+            const status = (await workflow.describe()).status.name;
+            if (status === 'RUNNING') {
+              await workflow.signal('stop');
+              if (workflowSignal !== 'unconfirmed') {
+                workflowSignal = 'signalled';
+              }
+            }
+          } catch (err) {
+            // A missing stable root workflow is normal for a draft that never
+            // had a scheduled execution. Other errors remain unconfirmed.
+            if (err instanceof Error && err.name === 'WorkflowNotFoundError') {
+              continue;
+            }
+
+            workflowSignal = 'unconfirmed';
+            this.reportWorkflowDispatchFailure(
+              err,
+              'signal-running',
+              'main',
+              post.id,
+              orgId,
+              workflowId
+            );
+          }
+        }
+      }
+
+      return { id: post.id, workflowSignal };
     }
 
     return { error: true };
@@ -934,49 +988,112 @@ export class PostsService {
     return this._postRepository.getPostByForWebhookId(id, integrationId);
   }
 
-  async startWorkflow(
+  private reportWorkflowDispatchFailure(
+    err: unknown,
+    operation: 'list-running' | 'signal-running' | 'terminate-running' | 'start',
+    taskQueue: string,
+    postId: string,
+    orgId: string,
+    workflowId = `post_${postId}`
+  ) {
+    // Keep operational context useful without attaching post text or tokens.
+    const errorDetails =
+      err instanceof Error
+        ? { name: err.name, message: err.message.slice(0, 500) }
+        : { name: 'UnknownError', message: 'A non-Error value was thrown' };
+    const context = {
+      component: 'posting-workflow-dispatch',
+      operation,
+      taskQueue,
+      postId,
+      organizationId: orgId,
+      workflowId,
+      error: errorDetails,
+    };
+
+    // Log even when Sentry is not configured; never include post text or tokens.
+    Logger.error(JSON.stringify(context), undefined, 'PostsService');
+    Sentry.captureException(err, {
+      tags: {
+        component: 'posting-workflow-dispatch',
+        operation,
+      },
+      extra: {
+        taskQueue,
+        postId,
+        organizationId: orgId,
+        workflowId,
+      },
+    });
+  }
+
+  private async dispatchWorkflowWithReporting(
     taskQueue: string,
     postId: string,
     orgId: string,
     state: State
   ) {
     try {
-      const workflows = this._temporalService.client
-        .getRawClient()
-        ?.workflow.list({
-          query: `postId="${postId}" AND ExecutionStatus="Running"`,
-        });
+      return await this.startWorkflow(taskQueue, postId, orgId, state);
+    } catch (err) {
+      this.reportWorkflowDispatchFailure(
+        err,
+        'start',
+        taskQueue,
+        postId,
+        orgId
+      );
+      return {
+        status: 'unconfirmed' as const,
+        workflowId: `post_${postId}`,
+      };
+    }
+  }
 
-      for await (const executionInfo of workflows) {
-        try {
+  async startWorkflow(
+    taskQueue: string,
+    postId: string,
+    orgId: string,
+    state: State
+  ) {
+    const client = this._temporalService.client.getRawClient();
+    if (!client) {
+      throw new Error('Temporal client is unavailable; post workflow was not started');
+    }
+
+    const workflowId = `post_${postId}`;
+    const query = `postId="${postId}" AND ExecutionStatus="Running"`;
+
+    return dispatchPostWorkflow({
+      state,
+      workflowId,
+      findRunningWorkflows: async () => {
+        const runningWorkflows = [];
+        const executions = client.workflow.list({ query });
+
+        for await (const executionInfo of executions) {
           const workflow = await this._temporalService.client.getWorkflowHandle(
             executionInfo.workflowId
           );
-          if (
-            workflow &&
-            (await workflow.describe()).status.name !== 'TERMINATED'
-          ) {
-            await workflow.terminate();
+          if (workflow) {
+            runningWorkflows.push(workflow);
           }
-        } catch (err) {}
-      }
-    } catch (err) {}
+        }
 
-    if (state === 'DRAFT') {
-      return;
-    }
-
-    try {
-      await this._temporalService.client
-        .getRawClient()
-        ?.workflow.start('postWorkflowV112', {
-          workflowId: `post_${postId}`,
+        return runningWorkflows;
+      },
+      signalWithStartWorkflow: () =>
+        client.workflow.signalWithStart('postWorkflowV112', {
+          workflowId,
           taskQueue: 'main',
-          workflowIdConflictPolicy: 'TERMINATE_EXISTING',
+          // Atomically create or reuse the stable execution and deliver the
+          // signal. Never terminate an execution in a provider mutation.
+          workflowIdConflictPolicy: 'USE_EXISTING',
+          signal: 'poke',
           args: [
             {
-              taskQueue: taskQueue,
-              postId: postId,
+              taskQueue,
+              postId,
               organizationId: orgId,
             },
           ],
@@ -990,8 +1107,9 @@ export class PostsService {
               value: orgId,
             },
           ]),
-        });
-    } catch (err) {}
+        }),
+      signalWorkflow: (workflow) => workflow.signal('poke'),
+    });
   }
 
   /**
@@ -1207,19 +1325,23 @@ export class PostsService {
         posts.filter((p) => existingIds.includes(p.id))
       );
 
-      if (body.type !== 'update') {
-        this.startWorkflow(
-          post.settings.__type.split('-')[0].toLowerCase(),
-          posts[0].id,
-          orgId,
-          posts[0].state
-        ).catch((err) => {});
-      }
+      const workflowDispatch =
+        body.type === 'update'
+          ? 'not_requested'
+          : (
+              await this.dispatchWorkflowWithReporting(
+                post.settings.__type.split('-')[0].toLowerCase(),
+                posts[0].id,
+                orgId,
+                posts[0].state
+              )
+            ).status;
 
       Sentry.metrics.count('post_created', 1);
       postList.push({
         postId: posts[0].id,
         integration: post.integration.id,
+        workflowDispatch,
       });
     }
 
@@ -1394,16 +1516,16 @@ export class PostsService {
     const state: State = status === 'draft' ? 'DRAFT' : 'QUEUE';
     await this._postRepository.changeState(id, state);
 
-    try {
-      await this.startWorkflow(
+    const workflowDispatch = (
+      await this.dispatchWorkflowWithReporting(
         getPostById.integration.providerIdentifier.split('-')[0].toLowerCase(),
         getPostById.id,
         orgId,
         state
-      );
-    } catch (err) {}
+      )
+    ).status;
 
-    return { id, state };
+    return { id, state, workflowDispatch };
   }
 
   async changeDate(
@@ -1430,16 +1552,16 @@ export class PostsService {
     );
 
     if (action === 'schedule') {
-      try {
-        await this.startWorkflow(
-          getPostById.integration.providerIdentifier
-            .split('-')[0]
-            .toLowerCase(),
+      const workflowDispatch = (
+        await this.dispatchWorkflowWithReporting(
+          getPostById.integration.providerIdentifier.split('-')[0].toLowerCase(),
           getPostById.id,
           orgId,
           getPostById.state === 'DRAFT' ? 'DRAFT' : 'QUEUE'
-        );
-      } catch (err) {}
+        )
+      ).status;
+
+      return { ...newDate, workflowDispatch };
     }
 
     return newDate;

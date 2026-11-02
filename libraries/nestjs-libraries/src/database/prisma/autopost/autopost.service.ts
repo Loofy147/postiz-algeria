@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AutopostRepository } from '@gitroom/nestjs-libraries/database/prisma/autopost/autopost.repository';
 import { AutopostDto } from '@gitroom/nestjs-libraries/dtos/autopost/autopost.dto';
 import dayjs from 'dayjs';
@@ -12,10 +12,13 @@ import { z } from 'zod';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import Parser from 'rss-parser';
+import { fetchSafePublicHttpsText } from '@gitroom/nestjs-libraries/dtos/webhooks/safe.public.https.fetch';
 import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { TemporalService } from 'nestjs-temporal-core';
 import { TypedSearchAttributes } from '@temporalio/common';
+import * as Sentry from '@sentry/nestjs';
+import { dispatchAutopostWorkflow } from './autopost.workflow.dispatch';
 import {
   organizationId,
 } from '@gitroom/nestjs-libraries/temporal/temporal.search.attribute';
@@ -85,9 +88,13 @@ export class AutopostService {
       id
     );
 
-    await this.processCron(body.active, orgId, data.id);
+    const workflowDispatch = await this.processCron(
+      body.active,
+      orgId,
+      data.id
+    );
 
-    return data;
+    return { ...data, workflowDispatch: workflowDispatch.status };
   }
 
   async changeActive(orgId: string, id: string, active: boolean) {
@@ -96,59 +103,117 @@ export class AutopostService {
       id,
       active
     );
-    await this.processCron(active, orgId, id);
-    return data;
+    const workflowDispatch = await this.processCron(active, orgId, id);
+    return { ...data, workflowDispatch: workflowDispatch.status };
+  }
+
+  private reportAutopostWorkflowFailure(
+    err: unknown,
+    operation: 'start' | 'terminate',
+    orgId: string,
+    id: string
+  ) {
+    const error =
+      err instanceof Error
+        ? { name: err.name, message: err.message.slice(0, 500) }
+        : { name: 'UnknownError', message: 'A non-Error value was thrown' };
+    const context = {
+      component: 'autopost-workflow',
+      operation,
+      organizationId: orgId,
+      autopostId: id,
+      workflowId: `autopost-${id}`,
+      error,
+    };
+
+    Logger.error(JSON.stringify(context), undefined, 'AutopostService');
+    Sentry.captureException(err, {
+      tags: { component: 'autopost-workflow', operation },
+      extra: {
+        organizationId: orgId,
+        autopostId: id,
+        workflowId: `autopost-${id}`,
+      },
+    });
   }
 
   async processCron(active: boolean, orgId: string, id: string) {
-    if (active) {
-      try {
-        return await this._temporalService.client
-          .getRawClient()
-          ?.workflow.start('autoPostWorkflow', {
-            workflowId: `autopost-${id}`,
-            taskQueue: 'main',
-            args: [{ id, immediately: true }],
-            // Keep a running workflow, it reads the autopost settings on every run
-            workflowIdConflictPolicy: 'USE_EXISTING',
-            typedSearchAttributes: new TypedSearchAttributes([
-              {
-                key: organizationId,
-                value: orgId,
-              },
-            ]),
-          });
-      } catch (err) {
-        // Don't fall through and terminate an active autopost
-        return false;
-      }
-    }
+    return dispatchAutopostWorkflow({
+      active,
+      start: async () => {
+        const client = this._temporalService.client.getRawClient();
+        if (!client) {
+          throw new Error('Temporal client is unavailable for autopost activation');
+        }
 
-    try {
-      return await this._temporalService.terminateWorkflow(`autopost-${id}`);
-    } catch (err) {
-      return false;
-    }
+        // Atomically create/reuse the workflow and wake its hourly loop.
+        await client.workflow.signalWithStart('autoPostWorkflow', {
+          workflowId: `autopost-${id}`,
+          taskQueue: 'main',
+          args: [{ id, immediately: false }],
+          workflowIdConflictPolicy: 'USE_EXISTING',
+          signal: 'activate',
+          typedSearchAttributes: new TypedSearchAttributes([
+            {
+              key: organizationId,
+              value: orgId,
+            },
+          ]),
+        });
+      },
+      stop: async () => {
+        const client = this._temporalService.client.getRawClient();
+        if (!client) {
+          throw new Error('Temporal client is unavailable for autopost deactivation');
+        }
+
+        try {
+          await client.workflow.getHandle(`autopost-${id}`).signal('stop');
+          return 'stop_requested' as const;
+        } catch (err) {
+          // A missing workflow is a confirmed inactive state, not a failure.
+          if (err instanceof Error && err.name === 'WorkflowNotFoundError') {
+            return 'not_running' as const;
+          }
+          throw err;
+        }
+      },
+      onFailure: (err, operation) =>
+        this.reportAutopostWorkflowFailure(err, operation, orgId, id),
+    });
   }
 
   async deleteAutopost(orgId: string, id: string) {
     const data = await this._autopostsRepository.deleteAutopost(orgId, id);
-    await this.processCron(false, orgId, id);
-    return data;
+    const workflowDispatch = await this.processCron(false, orgId, id);
+    return { ...data, workflowDispatch: workflowDispatch.status };
   }
 
   async loadXML(url: string) {
     try {
-      const { items } = await parser.parseURL(url);
+      // Feed URLs and redirects are external input. Fetch each hop through the
+      // pinned-DNS SSRF guard instead of letting rss-parser fetch the URL itself.
+      const xml = await fetchSafePublicHttpsText(url, {
+        maxBytes: 2 * 1024 * 1024,
+      });
+      const { items } = await parser.parseString(xml);
+      if (!items?.length) {
+        return { success: false };
+      }
+
       const findLast = items.reduce(
         (all: any, current: any) => {
-          if (dayjs(current.pubDate).isAfter(all.pubDate)) {
+          if (current.pubDate && dayjs(current.pubDate).isAfter(all.pubDate)) {
             return current;
           }
           return all;
         },
         { pubDate: dayjs().subtract(100, 'years') }
       );
+
+      if (!findLast.link) {
+        return { success: false };
+      }
 
       return {
         success: true,
@@ -164,7 +229,7 @@ export class AutopostService {
           .trim(),
       };
     } catch (err) {
-      /** sent **/
+      // A feed can be unavailable or unsafe; treat it as unavailable.
     }
 
     return { success: false };
@@ -176,7 +241,7 @@ export class AutopostService {
         messages: {
           reducer: (currentState, updateValue) =>
             currentState.concat(updateValue),
-          default: () => [],
+          default: (): BaseMessage[] => [],
         },
         body: null,
         description: null,
@@ -189,7 +254,12 @@ export class AutopostService {
 
   async loadUrl(url: string) {
     try {
-      const loadDom = new JSDOM(await (await fetch(url)).text());
+      // RSS item links are untrusted too. Do not fetch them with plain fetch:
+      // revalidate each redirect and cap both response size and duration.
+      const html = await fetchSafePublicHttpsText(url, {
+        maxBytes: 5 * 1024 * 1024,
+      });
+      const loadDom = new JSDOM(html);
       loadDom.window.document
         .querySelectorAll('script')
         .forEach((s) => s.remove());
